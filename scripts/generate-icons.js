@@ -13,7 +13,7 @@
  *   public/icons/icon-{N}x{N}.png  (72, 96, 128, 144, 152, 192, 384, 512)
  *   public/icons/maskable-icon-{N}x{N}.png (192, 512)
  *
- * To replace the production domain later, search for "example.com" in:
+ * To replace the production domain later, search for the current production domain in:
  *   index.html, public/robots.txt, public/sitemap.xml
  */
 
@@ -139,7 +139,7 @@ async function run() {
   console.log('  npm run build');
   console.log('  npm run preview');
   console.log('');
-  console.log('To set your production domain, replace "example.com" in:');
+  console.log('To set your production domain, update the canonical/social URLs in:');
   console.log('  index.html, public/robots.txt, public/sitemap.xml');
   console.log('');
 }
