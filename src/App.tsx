@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GameShell } from './components/GameShell';
 import { GameScreen } from './components/GameScreen';
 import { HomeScreen } from './components/HomeScreen';
@@ -7,12 +7,29 @@ import { useGameEngine } from './hooks/useGameEngine';
 import { usePlayerProfile } from './hooks/usePlayerProfile';
 import { loadCatalogs } from './state/catalogStore';
 
+type AppRoute = 'home' | 'profile' | 'game';
+
+const historyRouteKey = 'numberMergeRoute';
+
+const getHistoryState = (route: AppRoute) => ({
+  ...(typeof window.history.state === 'object' && window.history.state ? window.history.state : {}),
+  [historyRouteKey]: route,
+});
+
 export default function App() {
   const game = useGameEngine();
   const playerProfile = usePlayerProfile();
   const [homeView, setHomeView] = useState<'home' | 'profile'>('home');
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState('');
+  const gameRef = useRef(game);
+
+  gameRef.current = game;
+
+  const pushRoute = useCallback((route: AppRoute) => {
+    if (window.history.state?.[historyRouteKey] === route) return;
+    window.history.pushState(getHistoryState(route), '', window.location.href);
+  }, []);
 
   useEffect(() => {
     void loadCatalogs();
@@ -28,6 +45,64 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!window.history.state?.[historyRouteKey]) {
+      window.history.replaceState(getHistoryState('home'), '', window.location.href);
+    }
+
+    const handleBrowserNavigation = (event: PopStateEvent) => {
+      const route = (event.state?.[historyRouteKey] ?? 'home') as AppRoute;
+      const currentGame = gameRef.current;
+
+      if (currentGame.screen === 'game' && currentGame.modal === null && route !== 'game') {
+        currentGame.pause();
+        window.history.pushState(getHistoryState('game'), '', window.location.href);
+        return;
+      }
+
+      if (route === 'game') {
+        setHomeView('home');
+        if (currentGame.screen !== 'game') currentGame.startGame();
+        return;
+      }
+
+      if (currentGame.screen === 'game') currentGame.goHome();
+      setHomeView(route === 'profile' ? 'profile' : 'home');
+    };
+
+    window.addEventListener('popstate', handleBrowserNavigation);
+    return () => window.removeEventListener('popstate', handleBrowserNavigation);
+  }, []);
+
+  const showHome = useCallback(() => {
+    gameRef.current.goHome();
+    setHomeView('home');
+    pushRoute('home');
+  }, [pushRoute]);
+
+  const showProfile = useCallback(() => {
+    if (gameRef.current.screen === 'game') gameRef.current.goHome();
+    setHomeView('profile');
+    pushRoute('profile');
+  }, [pushRoute]);
+
+  const playGame = useCallback(() => {
+    setHomeView('home');
+    gameRef.current.startGame();
+    pushRoute('game');
+  }, [pushRoute]);
+
+  const saveProfile = useCallback((profile: Parameters<typeof playerProfile.updateProfile>[0]) => {
+    playerProfile.updateProfile(profile);
+    setHomeView('home');
+    pushRoute('home');
+  }, [playerProfile, pushRoute]);
+
+  const gameWithNavigation = useMemo(() => ({
+    ...game,
+    goHome: showHome,
+  }), [game, showHome]);
+
   if (loading) {
     return (
       <GameShell className="splash-screen">
@@ -40,13 +115,13 @@ export default function App() {
 
   return (
     <GameShell>
-      {game.screen === 'game' ? <GameScreen game={game} /> : homeView === 'profile' ? (
+      {game.screen === 'game' ? <GameScreen game={gameWithNavigation} /> : homeView === 'profile' ? (
         <ProfileScreen
           profile={playerProfile.profile}
           level={game.level}
-          onBack={() => setHomeView('home')}
-          onPlay={() => { setHomeView('home'); game.startGame(); }}
-          onSave={(profile) => { playerProfile.updateProfile(profile); setHomeView('home'); }}
+          onBack={showHome}
+          onPlay={playGame}
+          onSave={saveProfile}
         />
       ) : (
         <HomeScreen
@@ -56,8 +131,8 @@ export default function App() {
           gems={game.gems}
           bestScore={game.bestScore}
           profile={playerProfile.profile}
-          onPlay={game.startGame}
-          onProfile={() => setHomeView('profile')}
+          onPlay={playGame}
+          onProfile={showProfile}
         />
       )}
       {toast && <div className="toast">{toast}</div>}
