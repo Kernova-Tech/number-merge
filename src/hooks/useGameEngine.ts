@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { COLS, INITIAL_GEMS, INITIAL_HIGHEST, REWARD_VALUES, ROWS } from '../game/constants';
-import { cloneBoard, createDistinctInitialBoard, createEmptyBoard, createInitialBoard, generateNextTile, shootTile } from '../game/gameLogic';
+import { cloneBoard, createDistinctInitialBoard, createEmptyBoard, createInitialBoard, removeRetiredTiles, resolveMerges, shootTile } from '../game/gameLogic';
+import { loadRun } from '../game/savedRun';
 import { getCurrentGoal, getMilestoneInfo, getRetiredValuesForHighest } from '../game/milestones';
 import { generateWeightedTile, getActiveTilePool } from '../game/tileGeneration';
 import { calculateMergeXp, calculateMilestoneXp, getLevelProgress, getTotalXpForLevel } from '../game/leveling';
@@ -77,6 +78,9 @@ const MERGE_POP_DURATION = 180;
 const MERGE_CHAIN_PAUSE = 70;
 
 export function useGameEngine(): GameEngine {
+  const [initialRun] = useState(loadRun);
+  const savedRun = useRef(initialRun);
+  const [runActive, setRunActive] = useState(false);
   const [screen, setScreen] = useState<'home' | 'game'>('home');
   const [board, setBoard] = useState<Board>(createEmptyBoard);
   const [currentTile, setCurrentTile] = useState<TileValue>(2);
@@ -126,6 +130,18 @@ export function useGameEngine(): GameEngine {
   useEffect(() => storage.set('total-xp', totalXp), [totalXp]);
   useEffect(() => storage.set('boosters', boosters), [boosters]);
   useEffect(() => {
+    if (!runActive || screen !== 'game' || tutorialStep > 0 || isShooting || isResolvingMerge || isPromotingNextTile) return;
+    if (modal === 'game-over') {
+      storage.set('saved-run', null);
+      savedRun.current = null;
+      return;
+    }
+    const rewardModal = modal === 'unlock' || modal === 'milestone' ? modal : null;
+    const run = { version: 1 as const, board: cloneBoard(board), score, currentTile, nextTile, selectedColumn, highestBlock, totalXp, rewardModal, modalTile, milestoneInfo };
+    savedRun.current = run;
+    storage.set('saved-run', run);
+  }, [runActive, screen, tutorialStep, isShooting, isResolvingMerge, isPromotingNextTile, modal, board, score, currentTile, nextTile, selectedColumn, highestBlock, totalXp, modalTile, milestoneInfo]);
+  useEffect(() => {
     if (modal === 'created-again') setModal(null);
   }, [modal]);
 
@@ -141,11 +157,13 @@ export function useGameEngine(): GameEngine {
   }, []);
 
   const setupNormalGame = useCallback((previousBoard?: Board, previousShooter?: TileValue) => {
+    setRunActive(true);
     if (promotionTimer.current) window.clearTimeout(promotionTimer.current);
     if (pendingTutorialTimer.current) window.clearTimeout(pendingTutorialTimer.current);
     if (mergeTimer.current) window.clearTimeout(mergeTimer.current);
     const retired = getRetiredValuesForHighest(highestBlock);
-    setBoard(previousBoard ? createDistinctInitialBoard(previousBoard, retired) : createInitialBoard(retired));
+    const initialBoard = previousBoard ? createDistinctInitialBoard(previousBoard, retired) : createInitialBoard(retired);
+    setBoard(resolveMerges(initialBoard, { row: 0, col: 0 }, highestBlock).board);
     setScore(0);
     const firstTile = spawnTile(highestBlock, previousShooter ? [previousShooter] : []);
     const followingTile = spawnTile(highestBlock, [firstTile]);
@@ -164,6 +182,22 @@ export function useGameEngine(): GameEngine {
 
   const startGame = useCallback(() => {
     setScreen('game');
+    const saved = savedRun.current;
+    if (saved) {
+      setBoard(cloneBoard(saved.board));
+      setScore(saved.score);
+      setCurrentTile(saved.currentTile);
+      setNextTile(saved.nextTile);
+      setSelectedColumn(saved.selectedColumn);
+      setHighestBlock(saved.highestBlock);
+      setTotalXp(saved.totalXp);
+      setTutorialStep(0);
+      setModal(saved.rewardModal ?? null);
+      setModalTile(saved.modalTile ?? null);
+      setMilestoneInfo(saved.milestoneInfo ?? null);
+      setRunActive(true);
+      return;
+    }
     if (!storage.get('tutorial-complete', false) && !retiredTiles.includes(2)) {
       setBoard(createEmptyBoard());
       setScore(0);
@@ -179,6 +213,7 @@ export function useGameEngine(): GameEngine {
   }, [board, currentTile, retiredTiles, setupNormalGame]);
 
   const goHome = useCallback(() => {
+    if (isShooting || isPromotingNextTile || isResolvingMerge) return;
     if (promotionTimer.current) window.clearTimeout(promotionTimer.current);
     if (pendingTutorialTimer.current) window.clearTimeout(pendingTutorialTimer.current);
     if (mergeTimer.current) window.clearTimeout(mergeTimer.current);
@@ -189,7 +224,7 @@ export function useGameEngine(): GameEngine {
     setIsPromotingNextTile(false);
     setIsResolvingMerge(false);
     setMergeAnimation(null);
-  }, []);
+  }, [isShooting, isPromotingNextTile, isResolvingMerge]);
 
   const restart = useCallback(() => {
     setScreen('game');
@@ -222,7 +257,7 @@ export function useGameEngine(): GameEngine {
     const matchingHit = columnHeight > 0 && board[columnHeight - 1][column] === tile;
     const targetRow = matchingHit ? columnHeight - 1 : Math.min(columnHeight, ROWS - 1);
     const flightDuration = 190 + (ROWS - 1 - targetRow) * 23;
-    const result = shootTile(board, column, tile);
+    const result = shootTile(board, column, tile, highestBlock);
     setSelectedColumn(column);
     setIsShooting(true);
     setShotTileValue(tile);
@@ -265,7 +300,7 @@ export function useGameEngine(): GameEngine {
         return;
       }
 
-      const created = shotResult.merges.at(-1)?.value;
+      const created = shotResult.merges.length ? Math.max(...shotResult.merges.map((merge) => merge.value)) : undefined;
       const isNewRecord = created !== undefined && created > highestBlock;
 
       // The next queue immediately adopts the pool unlocked by this shot.
@@ -284,8 +319,13 @@ export function useGameEngine(): GameEngine {
       promotionTimer.current = window.setTimeout(() => {
         setNextTile(generatedNextTile);
         setIsPromotingNextTile(false);
+        if (shotResult.gameOver) {
+          setModal('game-over');
+          return;
+        }
 
         if (isNewRecord) {
+          if (getRetiredValuesForHighest(nextHighest).length > retiredTiles.length) historyRef.current = [];
           setHighestBlock(nextHighest);
           setModalTile(nextHighest);
           // A milestone is "reached" the first time we cross it — i.e. its
@@ -331,7 +371,7 @@ export function useGameEngine(): GameEngine {
     };
 
     window.setTimeout(() => {
-      if (result.gameOver) {
+      if (result.gameOver && result.landing === null) {
         setIsShooting(false);
         setShotTileValue(null);
         setModal('game-over');
@@ -340,7 +380,7 @@ export function useGameEngine(): GameEngine {
 
       historyRef.current = [...historyRef.current.slice(-9), before];
       const nextScore = score + result.scoreGained;
-      const created = result.merges.at(-1)?.value;
+      const created = result.merges.length ? Math.max(...result.merges.map((merge) => merge.value)) : undefined;
       const earnedXp = calculateMergeXp(result.merges)
         + (created && created > highestBlock ? calculateMilestoneXp(highestBlock, created) : 0);
       setScore(nextScore);
@@ -385,7 +425,7 @@ export function useGameEngine(): GameEngine {
     historyRef.current = historyRef.current.slice(0, -1);
     const activePoolForUndo = getActiveTilePool(highestBlock);
     setBoosters((counts) => ({ ...counts, undo: counts.undo - 1 }));
-    setBoard(previous.board);
+    setBoard(removeRetiredTiles(previous.board, highestBlock));
     setScore(previous.score);
     setTotalXp(previous.totalXp);
     // Restore the exact tiles the player had, unless they are now retired.
@@ -408,10 +448,27 @@ export function useGameEngine(): GameEngine {
       for (let r = 0; r < ROWS; r += 1) next[r][column] = values[r] ?? null;
     }
     historyRef.current = [...historyRef.current.slice(-9), { board: cloneBoard(board), score, currentTile, nextTile, highestBlock, totalXp }];
-    setBoard(next);
+    const resolved = resolveMerges(next, { row: 0, col: 0 }, highestBlock);
+    setBoard(resolved.board);
+    setScore((value) => value + resolved.scoreGained);
+    setBestScore((value) => Math.max(value, score + resolved.scoreGained));
+    const created = Math.max(highestBlock, ...resolved.merges.map((merge) => merge.value));
+    setTotalXp((value) => value + calculateMergeXp(resolved.merges) + calculateMilestoneXp(highestBlock, created));
+    if (created > highestBlock) {
+      if (getRetiredValuesForHighest(created).length > getRetiredValuesForHighest(highestBlock).length) historyRef.current = [];
+      setHighestBlock(created);
+      setModalTile(created);
+      const milestone = getMilestoneInfo(created);
+      setMilestoneInfo(milestone);
+      setModal(milestone ? 'milestone' : 'unlock');
+      const pool = getActiveTilePool(created);
+      const safeCurrent = pool.includes(currentTile) ? currentTile : spawnTile(created);
+      setCurrentTile(safeCurrent);
+      setNextTile(pool.includes(nextTile) ? nextTile : spawnTile(created, [safeCurrent]));
+    }
     setBoosters((counts) => ({ ...counts, hammer: counts.hammer - 1 }));
     setHammerActive(false);
-  }, [board, currentTile, hammerActive, highestBlock, nextTile, score, totalXp]);
+  }, [board, currentTile, hammerActive, highestBlock, nextTile, score, totalXp, spawnTile]);
 
   const claimUnlock = useCallback((double: boolean) => {
     if (modalTile) setGems((amount) => amount + (REWARD_VALUES[modalTile] ?? 10) * (double ? 2 : 1));
