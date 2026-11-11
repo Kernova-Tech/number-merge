@@ -19,7 +19,11 @@ const { tmpdir } = require('node:os');
           sessionStorage.setItem('seeded', 'true');
         }
         window.nativeRequests = [];
-        if (native) window.GameHost = { postMessage(message) { window.nativeRequests.push(JSON.parse(message)); } };
+        if (native) setTimeout(() => { window.GameHost = { postMessage(message) {
+          const request = JSON.parse(message);
+          window.nativeRequests.push(request);
+          if (request.type === 'rewarded.ready') window.NumberMergeHost?.receive({ version: 1, type: 'rewarded.capabilities', enabled: true, bridgeToken: 'test-page-token', placements: ['milestone_double', 'booster_refill', 'daily_double'] });
+        } }; }, 1200);
       }, { native });
       await page.goto(process.argv[3] || 'http://127.0.0.1:5174');
       await page.getByText('PLAY NOW', { exact: true }).click();
@@ -36,6 +40,7 @@ const { tmpdir } = require('node:os');
         assert.equal((await wallet()).gems, 510);
       } else {
         await page.getByRole('button', { name: /Collect ×2 · 20 gems/ }).click();
+        assert.equal(await page.evaluate(() => window.nativeRequests.find(request => request.type === 'rewarded.request').bridgeToken), 'test-page-token', 'late-injected host completes handshake and receives nonce');
         assert.equal((await wallet()).gems, 500, 'click alone does not grant');
         await reply('cancelled');
         assert.equal((await wallet()).gems, 500, 'cancel grants nothing');
