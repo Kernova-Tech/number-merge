@@ -8,7 +8,7 @@ import { calculateMergeXp, calculateMilestoneXp, getLevelProgress, getTotalXpFor
 import type { Board, BoosterType, MergeAnimationState, MergeEvent, MilestoneInfo, ModalType, Position, ShotResult, TileValue } from '../game/types';
 import { storage } from '../utils/storage';
 import { createId } from '../utils/createId';
-import { adsSupported, listenForAdResult, pendingAd, requestAd } from '../utils/rewardBridge';
+import { adsSupported, listenForAdResult, pendingAd, requestAd, subscribeAdAvailability } from '../utils/rewardBridge';
 import { collectChallenge, collectDaily, creditReward, purchaseBoosters, readWallet, recordChallengeMove, syncWallet } from '../game/economy';
 import type { ChallengeId } from '../game/challenges';
 import { DAILY_GIFTS } from '../game/dailyRewards';
@@ -106,7 +106,7 @@ export function useGameEngine(): GameEngine {
   });
   const [boosters, setBoosters] = useState(() => readWallet().boosters);
   const [adBusy, setAdBusy] = useState(() => pendingAd() !== null);
-  const [adAvailable] = useState(adsSupported);
+  const [adAvailable, setAdAvailable] = useState(adsSupported);
   const claimLock = useRef(false);
   const rewardTileRef = useRef<number | null>(null);
   const [modal, setModal] = useState<ModalType>(null);
@@ -145,6 +145,7 @@ export function useGameEngine(): GameEngine {
   useEffect(() => storage.set('total-xp', totalXp), [totalXp]);
   useEffect(() => storage.set('boosters', boosters), [boosters]);
   useEffect(() => syncWallet(gems, boosters), [gems, boosters]);
+  useEffect(() => subscribeAdAvailability(() => setAdAvailable(adsSupported())), []);
   useEffect(() => listenForAdResult((request, result) => {
     if (result.status === 'earned') {
       if (request.placement === 'milestone_double' && request.milestone) {

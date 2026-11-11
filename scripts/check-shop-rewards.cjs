@@ -11,7 +11,10 @@ const { tmpdir } = require('node:os');
   await page.addInitScript(() => {
    const realNow = Date.now.bind(Date); Date.now = () => realNow() + Number(sessionStorage.getItem('test-day-offset') || 0);
    window.requests = [];
-   window.GameHost = { postMessage: message => window.requests.push(JSON.parse(message)) };
+   window.GameHost = { postMessage: message => {
+    const request = JSON.parse(message); window.requests.push(request);
+    if (request.type === 'rewarded.ready') window.NumberMergeHost?.receive({ version: 1, type: 'rewarded.capabilities', enabled: true, bridgeToken: 'test-page-token', placements: ['milestone_double', 'booster_refill', 'daily_double'] });
+   } };
   });
   await page.goto(process.argv[3] || 'http://127.0.0.1:5174');
   await page.getByRole('button', { name: 'Rewards', exact: true }).click();

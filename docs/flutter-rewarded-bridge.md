@@ -1,12 +1,18 @@
 # Flutter rewarded ads bridge — v1
 
-This repository implements the web side. The Flutter host must implement this contract before native ads work. No ad SDK or production ad unit is included in the web game.
+This repository implements the web side. The companion LinkSkool Flutter checkout implements the native host in `game_reward_bridge.dart`, registered by `GamePlayerScreen` and connected to `GameAdManager`. Both the updated web game and a rebuilt app must be deployed. No ad SDK or production ad unit is included in the web game.
 
 ## Host setup
 
 Register a `GameHost` JavaScript channel before loading the trusted game URL. Restrict navigation and bridge access to trusted game content. With `webview_flutter`, receive JSON through `addJavaScriptChannel('GameHost', onMessageReceived: ...)` and send JSON objects back with `runJavaScript` calling `window.NumberMergeHost.receive(...)`. Serialize response data as JSON; never concatenate unescaped content into JavaScript.
 
-The web game sends:
+Before enabling offers, the game sends `rewarded.ready`. The native host responds with capabilities:
+
+```json
+{"version":1,"type":"rewarded.capabilities","enabled":true,"bridgeToken":"per-page-nonce","placements":["milestone_double","booster_refill","daily_double"]}
+```
+
+Requests and acknowledgements must include that `bridgeToken`. The host rotates it on page navigation, validates the current main-page origin, and registers its channel before loading the game. Production access is restricted to `https://merge.linkskool.com`. A channel alone does not enable offers; a configured native host must confirm readiness. The game retries readiness when channel injection is delayed.
 
 ```json
 {"version":1,"type":"rewarded.request","requestId":"unique-uuid","createdAt":123456789,"placement":"milestone_double","milestone":512}
@@ -45,7 +51,9 @@ Shop and Rewards navigation are implemented. The shop offers individual boosters
 
 Daily challenges are implemented in the Rewards screen: 10 merges for 10 gems, create 128 or higher for 15 gems, and three merges in one shot for 20 gems. Progress is recorded after completed normal-game moves, not tutorial animations or initial board generation. Booster merges count toward total merges and the created tile, but not a shot chain. Claims use dated receipts in the wallet; days reset at 00:00 UTC using the same device-clock limitations as daily gifts. Saved runs include a run ID and move counter to deduplicate replayed completion events.
 
-Revive, standalone bonus offers and shared points remain follow-up work. Native consent, ad inventory/caps and SDK test ad units must be configured in Flutter. This repository does not yet contain the Flutter host implementation.
+Revive, standalone bonus offers and shared points remain follow-up work. The Flutter host uses the existing `GAME_REWARD_AD_KEY` configuration and fullscreen-ad coordinator. Existing banner, app-open, and interstitial placements are preserved. Cancellation or unavailable inventory grants no bonus. Native receipts are persisted in SharedPreferences and acknowledged by the web wallet; this is local recovery, not server-side reward verification.
+
+For debug builds only, `GAME_REWARD_TEST_ADS=true` selects Google's official rewarded test unit. `GAME_REWARD_PREVIEW_ORIGIN` optionally permits an exact local preview origin in debug builds; it is ignored in release builds. Keep build definitions and logs private. A successful build or simulated host test does not establish real device ad delivery or consent compliance.
 
 ## Verification
 
