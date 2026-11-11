@@ -7,6 +7,7 @@ import { generateWeightedTile, getActiveTilePool } from '../game/tileGeneration'
 import { calculateMergeXp, calculateMilestoneXp, getLevelProgress, getTotalXpForLevel } from '../game/leveling';
 import type { Board, BoosterType, MergeAnimationState, MergeEvent, MilestoneInfo, ModalType, Position, ShotResult, TileValue } from '../game/types';
 import { storage } from '../utils/storage';
+import { createId } from '../utils/createId';
 import { adsSupported, listenForAdResult, pendingAd, requestAd } from '../utils/rewardBridge';
 import { collectChallenge, collectDaily, creditReward, purchaseBoosters, readWallet, recordChallengeMove, syncWallet } from '../game/economy';
 import type { ChallengeId } from '../game/challenges';
@@ -86,7 +87,8 @@ const MERGE_CHAIN_PAUSE = 70;
 export function useGameEngine(): GameEngine {
   const [initialRun] = useState(loadRun);
   const savedRun = useRef(initialRun);
-  const runId = useRef(initialRun?.runId ?? crypto.randomUUID());
+  const [initialRunId] = useState(() => initialRun?.runId ?? createId());
+  const runId = useRef(initialRunId);
   const moveNumber = useRef(initialRun?.moveNumber ?? 0);
   const [runActive, setRunActive] = useState(false);
   const [screen, setScreen] = useState<'home' | 'game'>('home');
@@ -208,7 +210,7 @@ export function useGameEngine(): GameEngine {
   }, []);
 
   const setupNormalGame = useCallback((previousBoard?: Board, previousShooter?: TileValue) => {
-    runId.current = crypto.randomUUID();
+    runId.current = createId();
     moveNumber.current = 0;
     setRunActive(true);
     if (promotionTimer.current) window.clearTimeout(promotionTimer.current);

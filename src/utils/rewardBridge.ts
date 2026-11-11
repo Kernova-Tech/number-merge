@@ -1,5 +1,6 @@
 import type { BoosterType } from '../game/types';
 import { storage } from './storage';
+import { createId } from './createId';
 
 export type AdRequest = { version: 1; type: 'rewarded.request'; requestId: string; placement: 'milestone_double' | 'booster_refill' | 'daily_double'; createdAt: number; milestone?: number; booster?: BoosterType; dailyId?: string; dailyIndex?: number };
 export type AdResult = { requestId: string; status: 'earned' | 'cancelled' | 'failed' | 'unavailable' };
@@ -14,7 +15,7 @@ export const pendingAd = () => storage.get<AdRequest | null>('pending-ad', null)
 export function requestAd(placement: AdRequest['placement'], detail: { milestone?: number; booster?: BoosterType; dailyId?: string; dailyIndex?: number }): AdRequest {
   if (!adsSupported()) throw new Error('unavailable');
   if (pendingAd()) throw new Error('pending');
-  const request: AdRequest = { version: 1, type: 'rewarded.request', requestId: crypto.randomUUID(), createdAt: Date.now(), placement, ...detail };
+  const request: AdRequest = { version: 1, type: 'rewarded.request', requestId: createId(), createdAt: Date.now(), placement, ...detail };
   storage.set('ad-requests', { ...storage.get<Record<string, AdRequest>>('ad-requests', {}), [request.requestId]: request });
   storage.set('pending-ad', request);
   try { window.GameHost!.postMessage(JSON.stringify(request)); }
