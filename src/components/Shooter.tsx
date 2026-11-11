@@ -9,12 +9,13 @@ interface ShooterProps {
   selectedColumn: number;
   isShooting: boolean;
   isPromotingNextTile: boolean;
+  isResolvingMerge: boolean;
   onSelect: (column: number) => void;
   onShoot: (column: number) => void;
   onPause: () => void;
 }
 
-export function Shooter({ currentTile, nextTile, selectedColumn, isShooting, isPromotingNextTile, onSelect, onShoot, onPause }: ShooterProps) {
+export function Shooter({ currentTile, nextTile, isShooting, isPromotingNextTile, isResolvingMerge, onSelect, onShoot, onPause }: ShooterProps) {
   const { t } = useTranslation();
   const columnFromPointer = (element: HTMLElement, clientX: number) => {
     const rect = element.getBoundingClientRect();
@@ -23,7 +24,7 @@ export function Shooter({ currentTile, nextTile, selectedColumn, isShooting, isP
 
   return (
     <div
-      className="shooter-rail"
+      className={`shooter-rail ${isShooting ? 'origin-launching' : ''} ${isResolvingMerge ? 'origin-resolving' : ''} ${isPromotingNextTile ? 'origin-returning' : ''}`}
       onPointerDown={(event) => {
         event.currentTarget.setPointerCapture(event.pointerId);
         onSelect(columnFromPointer(event.currentTarget, event.clientX));
@@ -44,6 +45,8 @@ export function Shooter({ currentTile, nextTile, selectedColumn, isShooting, isP
         {!isPromotingNextTile && <Tile key={nextTile} value={nextTile} compact />}
       </div>
       <div className="shooter-position">
+        <span className="origin-halo" aria-hidden="true" />
+        {isShooting && <span className="origin-launch-ripple" aria-hidden="true" />}
         <div className={`shooter-slot ${isShooting || isPromotingNextTile ? 'empty' : ''}`}>
           {!isShooting && !isPromotingNextTile && <Tile value={currentTile} className="shooter-current-tile" />}
         </div>
@@ -54,7 +57,7 @@ export function Shooter({ currentTile, nextTile, selectedColumn, isShooting, isP
         )}
         <span className="aim-chevron">▲</span>
       </div>
-      <div className="lane-indicator" style={{ '--selected-column': selectedColumn } as React.CSSProperties}>
+      <div className="origin-light" aria-hidden="true">
         <i />
       </div>
       <button className="pause-button" onPointerDown={(event) => event.stopPropagation()} onClick={onPause} aria-label={t('pause')}>Ⅱ</button>

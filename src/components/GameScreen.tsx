@@ -55,6 +55,7 @@ export function GameScreen({ game }: { game: GameEngine }) {
         selectedColumn={game.selectedColumn}
         isShooting={game.isShooting}
         isPromotingNextTile={game.isPromotingNextTile}
+        isResolvingMerge={game.isResolvingMerge}
         onSelect={game.selectColumn}
         onShoot={game.shoot}
         onPause={game.pause}

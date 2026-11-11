@@ -527,3 +527,25 @@ button:disabled { cursor: default; opacity: .45; }
 .selected-language b .country-flag-svg,
 .language-results b .country-flag-svg { width: 22px; height: 15px; }
 .language-results span { font-size: 12px; }
+
+/* Launch light: a fixed origin, a travelling streak, then a soft recharge. */
+.origin-light { position: absolute; z-index: 4; left: 50%; top: -4px; width: 22px; height: 5px; transform: translateX(-50%); pointer-events: none; }
+.origin-light i { display: block; width: 100%; height: 100%; border-radius: 99px; background: #a4ffd0; box-shadow: 0 0 7px #68ffab, 0 0 20px #39ef8c99; opacity: 1; transform: scaleX(1); transition: opacity .65s ease-in-out .1s, transform .65s ease-in-out .1s; }
+.origin-halo { position: absolute; z-index: -1; inset: -10px; border-radius: 24px; background: radial-gradient(ellipse, #39ef8c40, #39ef8c10 52%, transparent 72%); pointer-events: none; opacity: 1; transition: opacity .65s ease-in-out .1s; }
+.origin-launching .origin-light i { opacity: 0; transform: scaleX(.65); transition: opacity .18s ease-out, transform .18s ease-out; }
+.origin-launching .origin-halo, .origin-resolving .origin-halo { opacity: 0; }
+.origin-launching .origin-halo, .origin-resolving .origin-halo { transition: opacity .18s ease-out; }
+.origin-resolving .origin-light i { opacity: 0; transform: scaleX(.65); }
+.origin-returning .origin-light i { opacity: 1; transform: scaleX(1); }
+.origin-returning .origin-halo { opacity: 1; }
+.origin-launch-ripple { position: absolute; z-index: 6; left: 50%; top: -9px; width: 38px; height: 18px; border: 2px solid #a4ffd0; border-radius: 50%; box-shadow: 0 0 12px #52ff9f99; pointer-events: none; animation: origin-ripple .38s ease-out both; }
+.game-screen .shot-flight::before { top: 65%; width: 12px; height: 125px; background: linear-gradient(to bottom, #c1ffdcdd, #49fca57a 28%, transparent); filter: blur(5px); }
+.shot-light-core { position: absolute; z-index: -1; inset: -7px; border-radius: 18px; background: radial-gradient(ellipse, #aaffd18c, #3ff49b24 58%, transparent 75%); pointer-events: none; animation: flight-light-fade var(--shot-duration) ease-out both; }
+@keyframes origin-ripple { 0% { opacity: .95; transform: translateX(-50%) scale(.4); } 100% { opacity: 0; transform: translateX(-50%) scale(2.6); } }
+@keyframes flight-light-fade { 0% { opacity: 1; transform: scale(1.15); } 75% { opacity: .8; } 100% { opacity: 0; transform: scale(.9); } }
+@media (prefers-reduced-motion: reduce) {
+  .origin-launch-ripple, .shot-light-core { display: none; }
+  .origin-light i, .origin-halo { animation: none !important; transition: opacity .1s linear; }
+  .origin-launching .origin-light i { opacity: 0; }
+  .game-screen .shot-flight::before { display: none; }
+}
