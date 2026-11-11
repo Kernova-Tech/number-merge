@@ -7,6 +7,7 @@ import { getGoalProgress, getNextGoal, HighestBlockHero } from './HighestBlockHe
 import { PrimaryPlayButton } from './PrimaryPlayButton';
 import { ProfileSummaryCard } from './ProfileSummaryCard';
 import { StageProgressCard } from './StageProgressCard';
+import { useDailyGiftStatus } from '../hooks/useDailyGiftStatus';
 
 interface HomeProps {
   highestBlock: TileValue;
@@ -17,9 +18,12 @@ interface HomeProps {
   profile: PlayerProfile;
   onPlay: () => void;
   onProfile: () => void;
+  onShop: () => void;
+  onRewards: () => void;
 }
 
-export function HomeScreen({ highestBlock, level, levelProgress, gems, bestScore, profile, onPlay, onProfile }: HomeProps) {
+export function HomeScreen({ highestBlock, level, levelProgress, gems, bestScore, profile, onPlay, onProfile, onShop, onRewards }: HomeProps) {
+  const daily = useDailyGiftStatus();
   const nextGoal = getNextGoal(highestBlock);
   const progress = getGoalProgress(highestBlock, nextGoal);
   return (
@@ -27,12 +31,12 @@ export function HomeScreen({ highestBlock, level, levelProgress, gems, bestScore
       <FloatingParticles />
       <div className="home-content">
         <ProfileSummaryCard profile={profile} level={level} levelProgress={levelProgress} gems={gems} onOpenProfile={onProfile} />
-        <DailyRewardCard />
+        <DailyRewardCard onOpen={onRewards} />
         <HighestBlockHero highestBlock={highestBlock} />
         <StageProgressCard bestScore={bestScore} goal={nextGoal} progress={progress} />
         <PrimaryPlayButton onPlay={onPlay} />
       </div>
-      <BottomNav onPlay={onPlay} onProfile={onProfile} />
+      <BottomNav onPlay={onPlay} onProfile={onProfile} onShop={onShop} onRewards={onRewards} rewardsReady={daily.hasReadyRewards} />
     </section>
   );
 }

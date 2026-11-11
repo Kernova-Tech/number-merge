@@ -1,5 +1,5 @@
 import { COLS, ROWS } from './constants';
-import { getSpawnPool } from './milestones';
+import { getSpawnPool, getRetiredValuesForHighest } from './milestones';
 import { generateWeightedTile } from './tileGeneration';
 import type { Board, MergeEvent, MergeStep, Position, ShotResult, TileValue } from './types';
 
@@ -53,6 +53,11 @@ export function compressColumns(board: Board): Board {
   return compressed;
 }
 
+export function removeRetiredTiles(board: Board, highest: number): Board {
+  const retired = getRetiredValuesForHighest(highest);
+  return compressColumns(board.map((row) => row.map((value) => value !== null && retired.includes(value) ? null : value)));
+}
+
 // Four cardinal directions only: up, down, left, right.
 // Deterministic order (top → bottom, left → right) for stable chain merge behavior.
 const NEIGHBOR_DIRS = [
@@ -94,31 +99,42 @@ export function hasPossibleMerge(board: Board): boolean {
 export function resolveMerges(
   source: Board,
   start: Position,
+  highestBlock = 0,
 ): { board: Board; scoreGained: number; merges: MergeEvent[]; mergeSteps: MergeStep[]; active: Position } {
-  let board = cloneBoard(source);
+  let board = removeRetiredTiles(source, highestBlock);
   let active = { ...start };
   let scoreGained = 0;
   const merges: MergeEvent[] = [];
   const mergeSteps: MergeStep[] = [];
 
   while (true) {
-    const value = board[active.row]?.[active.col];
-    if (value === null || value === undefined) break;
-
-    const match = chooseMergeNeighbor(active, board, value);
-    if (!match) break;
+    let value = board[active.row]?.[active.col];
+    let match = value == null ? null : chooseMergeNeighbor(active, board, value);
+    if (!match) {
+      let found = false;
+      for (let row = 0; row < ROWS && !found; row += 1) {
+        for (let col = 0; col < COLS && !found; col += 1) {
+          const candidate = board[row][col];
+          const neighbor = candidate === null ? null : chooseMergeNeighbor({ row, col }, board, candidate);
+          if (neighbor) { active = { row, col }; value = candidate; match = neighbor; found = true; }
+        }
+      }
+      if (!found) break;
+    }
+    if (!match || value == null) break;
 
     const boardBefore = cloneBoard(board);
     const target = { ...active };
     board[match.row][match.col] = null;
     const doubled = value * 2;
+    highestBlock = Math.max(highestBlock, doubled);
     board[active.row][active.col] = doubled;
     scoreGained += doubled;
 
     const activeRowAfterCompression = board
       .slice(0, active.row)
-      .reduce((count, row) => count + (row[active.col] !== null ? 1 : 0), 0);
-    board = compressColumns(board);
+      .reduce((count, row) => count + (row[active.col] !== null && !getRetiredValuesForHighest(highestBlock).includes(row[active.col]!) ? 1 : 0), 0);
+    board = removeRetiredTiles(board, highestBlock);
     active = { row: activeRowAfterCompression, col: active.col };
     merges.push({ ...active, value: doubled });
     mergeSteps.push({
@@ -134,7 +150,7 @@ export function resolveMerges(
   return { board, scoreGained, merges, mergeSteps, active };
 }
 
-export function placeTileInColumn(board: Board, column: number, tile: TileValue): ShotResult {
+export function placeTileInColumn(board: Board, column: number, tile: TileValue, highestBlock = 0): ShotResult {
   if (column < 0 || column >= COLS) {
     return { board: cloneBoard(board), gameOver: false, scoreGained: 0, merges: [], mergeSteps: [], landing: null };
   }
@@ -171,7 +187,7 @@ export function placeTileInColumn(board: Board, column: number, tile: TileValue)
     landing = { row: height, col: column };
   }
 
-  const resolved = resolveMerges(next, landing);
+  const resolved = resolveMerges(next, landing, Math.max(highestBlock, ...collisionMerge.map((merge) => merge.value)));
 
   // After all merges, check if the resulting board is truly stuck.
   const boardFull = resolved.board[ROWS - 1].every((cell) => cell !== null);

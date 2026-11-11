@@ -527,3 +527,150 @@ button:disabled { cursor: default; opacity: .45; }
 .selected-language b .country-flag-svg,
 .language-results b .country-flag-svg { width: 22px; height: 15px; }
 .language-results span { font-size: 12px; }
+
+/* Launch light: a fixed origin, a travelling streak, then a soft recharge. */
+.rewards-screen { position: relative; isolation: isolate; background: radial-gradient(ellipse at 50% 22%, #104a363f, transparent 50%), #050b14; }
+.rewards-screen .collection-header { position: relative; z-index: 2; border-bottom: 0; background: linear-gradient(#07111ee8, #07111e88); }
+.rewards-screen .collection-content { position: relative; z-index: 1; padding-top: 4px; }
+.rewards-hero { position: relative; text-align: center; padding: 8px 0 17px; }
+.rewards-hero .hero-kicker { justify-content: center; font-size: 11px; letter-spacing: 3px; gap: 12px; }
+.reward-art { position: relative; height: 150px; display: grid; place-items: center; margin: 4px 0 5px; }
+.reward-orbit { position: absolute; width: 250px; height: 70px; bottom: 5px; border: 1px solid #32e99144; border-radius: 50%; background: radial-gradient(ellipse, #24dd7b24, transparent 68%); box-shadow: 0 0 35px #26e58012, inset 0 0 25px #37f38b12; }
+.reward-orbit::after { content: ''; position: absolute; inset: 12px 27px; border: 1px solid #f4ce5577; border-radius: 50%; box-shadow: 0 0 22px #ffc33f22; }
+.reward-treasure { position: relative; width: 110px; height: 112px; transform: rotate(-7deg); animation: treasure-float 4s ease-in-out infinite; filter: drop-shadow(0 10px 18px #0008); }
+.treasure-box { position: absolute; left: 7px; right: 4px; bottom: 7px; height: 69px; border: 2px solid #f4c65d; border-radius: 5px 5px 13px 13px; background: linear-gradient(120deg, #ae50ed, #7133c1 55%, #4a2387); box-shadow: inset 0 3px 4px #e4b2ff66, inset -9px -6px 15px #2c104b77, 0 4px 0 #e1a52c; }
+.treasure-box > i { position: absolute; inset: 0 32px; background: linear-gradient(90deg, #d78f22, #ffe393 48%, #d9a329); }
+.treasure-box > b { position: absolute; left: 33px; top: 18px; width: 30px; height: 31px; display: grid; place-items: center; border: 2px solid #ffed99; border-radius: 8px; background: #b87f23; color: #fff0af; font-size: 18px; text-shadow: 0 0 10px #ffdc7a; }
+.treasure-lid { position: absolute; z-index: 2; left: 0; right: -2px; top: 12px; height: 36px; transform: rotate(-8deg) translateY(-7px); transform-origin: left bottom; border: 2px solid #ffe08b; border-radius: 16px 16px 5px 5px; background: linear-gradient(#c779ff, #8d43c9 60%, #6935a9); box-shadow: inset 0 4px #f8d3ff66, 0 5px 0 #d39a31; }
+.treasure-lid > i { position: absolute; inset: 0 36px; background: linear-gradient(90deg, #e3ac39, #ffe99b, #daa02d); }
+.treasure-light { position: absolute; z-index: -1; inset: -23px -22px 10px; background: radial-gradient(ellipse, #ffe79d66, #ffe05b15 45%, transparent 70%); filter: blur(5px); }
+.treasure-star { position: absolute; z-index: 3; color: #ffe68c; text-shadow: 0 0 12px #ffd456; animation: reward-twinkle 2.3s ease-in-out infinite; }
+.treasure-star.one { right: -19px; top: 4px; font-size: 26px; }.treasure-star.two { left: -14px; top: 48px; font-size: 16px; animation-delay: .8s; }
+.reward-float-tile { position: absolute; width: 37px; animation: reward-tile-float 4s ease-in-out infinite; opacity: .8; }.reward-float-tile .tile { width: 37px; height: 37px; border-radius: 10px; font-size: 13px; }
+.reward-float-tile.left { left: 15%; top: 35px; transform: rotate(-17deg); }.reward-float-tile.right { right: 13%; top: 56px; transform: rotate(15deg); animation-delay: -2s; }
+.rewards-hero h2 { margin: 5px 0 7px; font-size: 25px; letter-spacing: -.6px; }.rewards-hero p { margin: 0; color: #93accd; font-size: 12px; }
+.reward-hero-status { display: inline-flex; align-items: center; gap: 7px; margin-top: 13px; padding: 8px 12px; border: 1px solid #5bffb22b; background: #0d281fbb; border-radius: 99px; font-size: 14px; font-weight: 900; }
+.reward-hero-status > span { color: #41d5ff; }.reward-hero-status small { font-size: 10px; color: #67efa7; font-weight: 600; padding-inline-start: 7px; border-inline-start: 1px solid #6dffb435; }
+.reward-view-tabs { display: flex; gap: 5px; padding: 5px; margin: 3px 0 21px; border: 1px solid #98b7df24; border-radius: 16px; background: #101c2bc9; }
+.reward-view-tabs button { position: relative; flex: 1; display: flex; gap: 7px; justify-content: center; align-items: center; min-height: 40px; border-radius: 11px; background: transparent; color: #a0b4cd; font-size: 13px; font-weight: 800; transition: background .2s, color .2s; }
+.reward-view-tabs button[aria-selected="true"] { background: linear-gradient(#23a664, #137547); box-shadow: inset 0 1px #a2ffd65c, 0 3px 10px #0004; color: #fff; }
+.reward-view-tabs b { padding: 3px 5px; border-radius: 6px; font-size: 10px; background: #ffffff14; }.reward-view-tabs i { width: 5px; height: 5px; border-radius: 50%; background: #80ffc1; box-shadow: 0 0 7px #60ffb7; }
+.reward-tab-panel { animation: collection-enter .25s ease-out both; }
+.gift-panel { display: flex; flex-direction: column; }
+.gift-panel .daily-collect-panel { order: 0; margin-bottom: 22px; }
+.gift-panel .daily-section-heading { order: 1; }.gift-panel .daily-calendar { order: 2; }.gift-panel .collection-footnote { order: 3; }
+.mission-hero .reward-art { height: 78px; margin-top: 0; }
+.mission-hero .reward-treasure { scale: .65; }
+.mission-hero .reward-orbit { width: 180px; height: 40px; bottom: -4px; }
+.mission-hero .reward-float-tile { scale: .7; top: 23px; }
+.mission-hero h2 { font-size: 23px; }
+@media (max-height: 650px) { .mission-hero .reward-art { display: none; }.mission-hero h2 { margin-top: 14px; }.mission-hero .hero-kicker { font-size: 10px; }.mission-hero { padding-top: 0; } }
+.daily-section-heading { display: flex; justify-content: space-between; align-items: center; margin: 0 0 13px; font-size: 10px; font-weight: 900; letter-spacing: 1.4px; color: #91adca; }.daily-section-heading b { color: #51ec9e; letter-spacing: 0; }
+.rewards-screen .daily-calendar { gap: 9px; }.rewards-screen .daily-day { background: linear-gradient(145deg, #1b2c3fdd, #101c2c); border: 1px solid #95c1ec26; box-shadow: inset 0 1px #ffffff0d, 0 5px 12px #0003; }
+.rewards-screen .daily-day.current:not(.claimed) { background: linear-gradient(145deg, #174c35, #0f2927); border-color: #51f1a06b; }.rewards-screen .daily-day.grand-gift { background: radial-gradient(ellipse at 50% 0, #7d5b2260, transparent), #192230; border-color: #f4ce5c66; }
+.rewards-screen .daily-collect-panel { background: radial-gradient(ellipse at 50% 0, #0c58332b, transparent), linear-gradient(145deg, #162739d9, #0d1828); border-color: #a3d0ff2b; box-shadow: inset 0 1px #ffffff0b; }
+.challenge-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 6px 0 17px; }.challenge-section-heading h2 { margin: 6px 0 0; font-size: 21px; letter-spacing: -.5px; }
+.mission-completion { text-align: center; color: #65ffb1; font-size: 22px; font-weight: 900; padding: 7px 9px; border-radius: 12px; border: 1px solid #53df9c30; background: #16372b80; }.mission-completion small { display: block; font-size: 9px; color: #9cbaa9; }
+.challenge-cards { display: grid; gap: 13px; }.challenge-card { position: relative; display: grid; grid-template-columns: 51px 1fr; gap: 13px; padding: 17px 14px 13px; border: 1px solid #92b9e729; border-radius: 19px; background: linear-gradient(120deg, #1b2e40bb, #101b2c); box-shadow: inset 0 1px #ffffff0c, 0 6px 20px #0003; }
+.challenge-emblem { position: relative; display: grid; place-items: center; width: 51px; height: 54px; margin-top: 3px; border: 1px solid #49ceff4d; border-radius: 15px; color: #67dcff; background: radial-gradient(ellipse at 30% 20%, #40caff30, #12263a); box-shadow: inset 0 1px #ffffff25; transform: rotate(-5deg); }
+.challenge-emblem svg { width: 33px; height: 33px; }.challenge-emblem > span { position: absolute; bottom: -5px; right: -5px; display: grid; place-items: center; width: 19px; height: 19px; border-radius: 50%; color: #ffe484; background: #423719; border: 1px solid #e2ba4a88; font-size: 10px; }
+.challenge-tile .challenge-emblem { color: #edbeff; border-color: #d082ff55; background: linear-gradient(135deg, #6e35a34a, #251e3e); }.challenge-chain .challenge-emblem { color: #ffda77; border-color: #ffc35755; background: linear-gradient(135deg, #8e5c254d, #302434); }
+.challenge-copy h3 { font-size: 16px; margin: 0 0 5px; }.challenge-copy p { color: #9bb0ca; font-size: 11px; line-height: 1.5; margin: 0 0 11px; }.challenge-progress-label { display: flex; align-items: center; justify-content: space-between; font-size: 10px; color: #90a8c5; }.challenge-progress-label b { color: #55d7ff; font-size: 12px; }
+.challenge-progress { overflow: hidden; height: 6px; border-radius: 99px; background: #020912a8; margin-top: 7px; box-shadow: inset 0 1px #0008; }.challenge-progress i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #10b970, #7affb6); box-shadow: 0 0 9px #34e38a88; transition: width .4s ease; }
+.challenge-collect { grid-column: 1 / -1; width: 100%; min-height: 37px; border-radius: 10px; background: #182b3d; color: #90a7c0; font-size: 12px; font-weight: 900; }.challenge-collect:disabled { opacity: 1; cursor: default; }.challenge-card.is-ready { border-color: #59f2a169; box-shadow: inset 0 1px #ffffff11, 0 0 22px #22d98110; }.challenge-card.is-ready .challenge-collect { background: linear-gradient(#35e78a, #12b76b); color: #fff; box-shadow: inset 0 1px #b3ffd981; }.challenge-card.is-collected .challenge-collect { color: #6cdb9e; background: #153529; }.challenge-card.is-collected .challenge-emblem > span { background: #155132; color: #8bffc0; border-color: #58d99566; }
+.mission-reset { display: flex; justify-content: space-between; gap: 10px; margin: 18px 3px 16px; font-size: 11px; color: #8fa7c5; }.mission-reset time { color: #d5e5f7; font-variant-numeric: tabular-nums; }
+.mission-play { display: flex; align-items: center; justify-content: center; gap: 20px; width: 100%; min-height: 49px; border: 1px solid #69ffad55; border-radius: 14px; background: linear-gradient(145deg, #20c979, #08633d); box-shadow: inset 0 1px #baffd55c, 0 8px 22px #20dd7830; font-size: 15px; font-weight: 1000; }.mission-play > span { display: grid; place-items: center; width: 29px; height: 29px; border-radius: 50%; background: #fff; color: #12b76b; font-size: 11px; }
+@keyframes treasure-float { 50% { transform: rotate(-4deg) translateY(-6px); } } @keyframes reward-twinkle { 50% { opacity: .4; transform: scale(.7); } } @keyframes reward-tile-float { 50% { translate: 0 -8px; } }
+@media (max-width: 350px) { .reward-art { height: 132px; }.rewards-hero h2 { font-size: 22px; }.reward-float-tile.left { left: 9%; }.reward-float-tile.right { right: 8%; }.challenge-card { gap: 10px; padding-inline: 12px; }.challenge-section-heading h2 { font-size: 19px; }.reward-view-tabs button { font-size: 12px; } }
+@media (prefers-reduced-motion: reduce) { .reward-treasure, .treasure-star, .reward-float-tile, .reward-tab-panel { animation: none; }.challenge-progress i, .reward-view-tabs button { transition: none; } }
+.collection-screen { height: 100%; display: flex; flex-direction: column; background: radial-gradient(ellipse at 80% 0, #17354a70, transparent 48%), #070e18; padding-top: env(safe-area-inset-top); }
+.collection-header { display: flex; align-items: center; gap: 12px; padding: 20px 18px 16px; border-bottom: 1px solid #93b8ed14; flex-shrink: 0; }
+.collection-back { width: 38px; height: 38px; border-radius: 12px; background: #ffffff0b; font-size: 28px; }
+.collection-header small { color: #8aacc4; font-size: 9px; letter-spacing: 1.8px; font-weight: 800; }
+.collection-header h1 { margin: 3px 0 0; font-size: 24px; }
+.collection-wallet { margin-inline-start: auto; padding: 10px 12px; border: 1px solid #7bd5ff24; background: #132338; border-radius: 14px; font-size: 17px; font-weight: 900; animation: wallet-pop .3s ease-out; }
+.collection-wallet i { color: #38cdff; font-style: normal; }
+.collection-content { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 22px 16px 24px; scrollbar-width: thin; animation: collection-enter .35s ease-out both; }
+.collection-eyebrow { color: #42e997; font-size: 10px; font-weight: 900; letter-spacing: 1.7px; }
+.collection-intro h2 { max-width: 300px; margin: 10px 0; font-size: 28px; line-height: 1.15; letter-spacing: -.6px; }
+.collection-intro p, .shop-bundle p { color: #a0b2c8; font-size: 13px; line-height: 1.6; margin: 0 0 22px; }
+.shop-items { display: grid; gap: 12px; }
+.shop-item { display: flex; align-items: center; gap: 12px; padding: 16px 12px; border: 1px solid #93b8ed22; border-radius: 18px; background: linear-gradient(120deg, #192b4099, #101a2b); box-shadow: inset 0 1px #ffffff08; }
+.shop-icon { display: grid; place-items: center; flex: 0 0 43px; width: 43px; height: 48px; border-radius: 13px; background: #ffffff08; }
+.shop-item-copy { flex: 1; min-width: 0; }
+.shop-item h3 { margin: 0 0 5px; font-size: 16px; }
+.shop-item p { margin: 0 0 7px; font-size: 11px; line-height: 1.5; color: #9caec6; }
+.shop-item small { font-size: 11px; color: #69e7ac; }
+.shop-item button { padding: 11px 10px; min-height: 42px; min-width: 60px; border-radius: 12px; background: #1cba6e; font-size: 13px; font-weight: 900; }
+.shop-item button i { font-style: normal; }
+.shop-bundle { position: relative; overflow: hidden; margin-top: 18px; padding: 22px 18px; text-align: center; border: 1px solid #56ea9c55; border-radius: 22px; background: radial-gradient(ellipse at 50% 15%, #23c87824, transparent 70%), #10241f; }
+.bundle-icons { display: flex; gap: 12px; justify-content: center; color: #92ffd0; margin: 20px 0 12px; }
+.bundle-icons svg { width: 35px; height: 35px; }
+.shop-bundle h2 { font-size: 22px; margin: 0 0 8px; }
+.shop-bundle p { margin-bottom: 15px; }
+.shop-bundle button, .collection-primary { width: 100%; min-height: 48px; padding: 12px; border-radius: 13px; background: linear-gradient(180deg, #35e78b, #10b566); font-size: 14px; font-weight: 900; box-shadow: inset 0 1px #ffffff40, 0 6px 20px #13c87724; }
+.shop-bundle s { opacity: .6; margin-inline-start: 7px; font-size: 11px; }
+.collection-footnote { color: #8199b3; font-size: 11px; line-height: 1.6; text-align: center; margin: 18px 8px 0; }
+.daily-calendar { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 20px; }
+.daily-day { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 118px; padding: 12px 5px; border: 1px solid #9cb8dc20; border-radius: 15px; background: #142133; text-align: center; }
+.daily-day small { color: #a1b3cd; font-size: 11px; }
+.daily-day strong { font-size: 11px; }
+.daily-day .gift-status { color: #71879e; font-size: 10px; }
+.daily-gift-art { height: 30px; display: grid; place-items: center; color: #44d6ff; }
+.daily-gift-art i { font-style: normal; font-size: 26px; filter: drop-shadow(0 0 9px #36baff55); }
+.daily-gift-art svg { color: #a0ecce; }
+.daily-day.current { border-color: #41ec965f; background: #163b30; box-shadow: 0 0 20px #25e88b12; }
+.daily-day.current:not(.claimed) { animation: daily-ready 2s ease-in-out infinite; }
+.daily-day.claimed { background: #132521; border-color: #47c99129; }
+.daily-day.claimed .gift-status { color: #5ef0a8; }
+.daily-day.claimed .daily-gift-art { opacity: .5; }
+.daily-day.grand-gift { grid-column: span 2; border-color: #e1bb4b44; background: linear-gradient(130deg, #45341a80, #202534); }
+.daily-collect-panel { display: flex; align-items: center; flex-direction: column; gap: 12px; padding: 22px 18px; border: 1px solid #a3bfdc20; border-radius: 21px; background: #101d2f; text-align: center; }
+.daily-collect-panel > small { font-size: 11px; color: #91a9c2; }
+.daily-collect-panel h2 { margin: 0 0 5px; font-size: 22px; }
+.daily-collect-panel p { margin: 0; color: #91a9c2; font-size: 13px; }
+.collection-bonus { width: 100%; min-height: 46px; padding: 9px; border: 1px solid #38bfed44; border-radius: 13px; background: #17364b; font-size: 13px; font-weight: 800; }
+.daily-collected-check { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; color: #6affb8; background: #28df8c18; font-size: 24px; animation: wallet-pop .4s ease-out; }
+.daily-countdown { font-size: 29px; font-weight: 900; font-variant-numeric: tabular-nums; letter-spacing: 2px; }
+.collection-screen > .bottom-nav { flex-shrink: 0; margin: 0 10px max(8px, env(safe-area-inset-bottom)); position: relative; }
+.collection-receipt { position: absolute; z-index: 25; left: 50%; top: 42%; width: max-content; max-width: 85%; padding: 18px 24px; border: 1px solid #70fbb278; border-radius: 18px; background: #103b2ef5; text-align: center; font-size: 15px; font-weight: 800; box-shadow: 0 15px 60px #0008; transform: translate(-50%, -50%); pointer-events: none; animation: receipt-enter .35s ease-out both; }
+.collection-receipt > span { display: block; color: #74ffb7; font-size: 30px; margin-bottom: 6px; }
+.receipt-sparks { position: absolute; inset: 0; pointer-events: none; }
+.receipt-sparks i { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; background: #8cffc6; border-radius: 2px; transform: rotate(calc(var(--spark) * 45deg)); animation: receipt-spark .7s ease-out both; }
+@keyframes collection-enter { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes wallet-pop { from { transform: scale(.92); } to { transform: scale(1); } }
+@keyframes daily-ready { 50% { box-shadow: 0 0 20px #25e88b35; } }
+@keyframes receipt-enter { from { opacity: 0; transform: translate(-50%, -40%) scale(.9); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+@keyframes receipt-spark { to { opacity: 0; transform: rotate(calc(var(--spark) * 45deg)) translateY(-100px) scale(.3); } }
+@media (max-width: 350px) { .collection-content { padding-inline: 10px; } .collection-header { padding-inline: 12px; } .shop-item { gap: 8px; padding-inline: 9px; } .shop-icon { flex-basis: 33px; } .daily-calendar { gap: 5px; } .daily-day strong { font-size: 10px; } }
+@media (prefers-reduced-motion: reduce) { .collection-content, .collection-wallet, .daily-day.current:not(.claimed), .daily-collected-check, .collection-receipt, .receipt-sparks i { animation: none; } .receipt-sparks { display: none; } }
+[dir="rtl"] .collection-back { transform: scaleX(-1); }
+.reward-choices { display: grid; gap: 10px; width: 100%; }
+.reward-choices button { white-space: normal; min-height: 44px; }
+.reward-choices .modal-primary, .reward-video-button { display: flex; align-items: center; justify-content: center; gap: 9px; }
+.reward-video-icon { display: inline-block; width: 30px; height: 26px; flex: 0 0 30px; overflow: visible; }
+.ad-availability { display: block; color: #a7b8ce; font-size: 12px; text-align: center; }
+.game-screen .booster-icon svg { display: block; width: 28px; height: 28px; }
+.booster-refill > svg { width: 48px; height: 48px; color: #62efab; }
+.booster-refill { gap: 12px; }
+.modal-card button:disabled { opacity: .5; cursor: not-allowed; }
+.origin-light { position: absolute; z-index: 4; left: 50%; top: -4px; width: 22px; height: 5px; transform: translateX(-50%); pointer-events: none; }
+.origin-light i { display: block; width: 100%; height: 100%; border-radius: 99px; background: #a4ffd0; box-shadow: 0 0 7px #68ffab, 0 0 20px #39ef8c99; opacity: 1; transform: scaleX(1); transition: opacity .65s ease-in-out .1s, transform .65s ease-in-out .1s; }
+.origin-halo { position: absolute; z-index: -1; inset: -10px; border-radius: 24px; background: radial-gradient(ellipse, #39ef8c40, #39ef8c10 52%, transparent 72%); pointer-events: none; opacity: 1; transition: opacity .65s ease-in-out .1s; }
+.origin-launching .origin-light i { opacity: 0; transform: scaleX(.65); transition: opacity .18s ease-out, transform .18s ease-out; }
+.origin-launching .origin-halo, .origin-resolving .origin-halo { opacity: 0; }
+.origin-launching .origin-halo, .origin-resolving .origin-halo { transition: opacity .18s ease-out; }
+.origin-resolving .origin-light i { opacity: 0; transform: scaleX(.65); }
+.origin-returning .origin-light i { opacity: 1; transform: scaleX(1); }
+.origin-returning .origin-halo { opacity: 1; }
+.origin-launch-ripple { position: absolute; z-index: 6; left: 50%; top: -9px; width: 38px; height: 18px; border: 2px solid #a4ffd0; border-radius: 50%; box-shadow: 0 0 12px #52ff9f99; pointer-events: none; animation: origin-ripple .38s ease-out both; }
+.game-screen .shot-flight::before { top: 65%; width: 12px; height: 125px; background: linear-gradient(to bottom, #c1ffdcdd, #49fca57a 28%, transparent); filter: blur(5px); }
+.shot-light-core { position: absolute; z-index: -1; inset: -7px; border-radius: 18px; background: radial-gradient(ellipse, #aaffd18c, #3ff49b24 58%, transparent 75%); pointer-events: none; animation: flight-light-fade var(--shot-duration) ease-out both; }
+@keyframes origin-ripple { 0% { opacity: .95; transform: translateX(-50%) scale(.4); } 100% { opacity: 0; transform: translateX(-50%) scale(2.6); } }
+@keyframes flight-light-fade { 0% { opacity: 1; transform: scale(1.15); } 75% { opacity: .8; } 100% { opacity: 0; transform: scale(.9); } }
+@media (prefers-reduced-motion: reduce) {
+  .origin-launch-ripple, .shot-light-core { display: none; }
+  .origin-light i, .origin-halo { animation: none !important; transition: opacity .1s linear; }
+  .origin-launching .origin-light i { opacity: 0; }
+  .game-screen .shot-flight::before { display: none; }
+}

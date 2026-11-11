@@ -75,6 +75,7 @@ export function Board({
             '--shot-duration': `${shotDuration}ms`,
           } as React.CSSProperties}
         >
+          <span className="shot-light-core" aria-hidden="true" />
           <Tile value={shotTile} />
         </div>
       )}

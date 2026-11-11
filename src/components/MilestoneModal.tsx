@@ -1,8 +1,9 @@
 import type { MilestoneInfo } from '../game/types';
 import { Tile } from './Tile';
 import { useTranslation } from '../i18n';
+import { RewardClaimButtons } from './RewardClaimButtons';
 
-export function MilestoneModal({ info, onContinue }: { info: MilestoneInfo; onContinue: () => void }) {
+export function MilestoneModal({ info, onClaim, busy, available }: { info: MilestoneInfo; onClaim: (double: boolean) => void; busy: boolean; available: boolean }) {
   const { t, formatNumber } = useTranslation();
   return (
     <div className="modal-layer milestone-layer">
@@ -16,7 +17,7 @@ export function MilestoneModal({ info, onContinue }: { info: MilestoneInfo; onCo
           <div><small>{t('blockRetired')}</small><strong>{t('noLongerAppear', { value: formatNumber(info.retired) })}</strong></div>
         </div>
         <div className="next-milestone-copy"><small>{t('nextMilestone')}</small><strong>{formatNumber(info.next)}</strong></div>
-        <button className="modal-primary" onClick={onContinue}>{t('continue')}</button>
+        <RewardClaimButtons value={info.current} busy={busy} available={available} onClaim={onClaim} />
       </div>
     </div>
   );

@@ -55,16 +55,20 @@ export function GameScreen({ game }: { game: GameEngine }) {
         selectedColumn={game.selectedColumn}
         isShooting={game.isShooting}
         isPromotingNextTile={game.isPromotingNextTile}
+        isResolvingMerge={game.isResolvingMerge}
         onSelect={game.selectColumn}
         onShoot={game.shoot}
         onPause={game.pause}
       />
-      <BoosterBar counts={game.boosters} active={game.hammerActive ? 'hammer' : null} onUse={game.useBooster} />
+      <BoosterBar counts={game.boosters} active={game.hammerActive ? 'hammer' : null} onUse={game.useBooster}
+        gems={game.gems} adAvailable={game.adAvailable} adBusy={game.adBusy}
+        disabled={game.isShooting || game.isResolvingMerge || game.isPromotingNextTile || (!!game.modal && game.modal !== 'booster-refill') || game.tutorialStep > 0}
+        onBuy={game.buyBooster} onWatch={game.watchForBooster} onOfferChange={game.setBoosterOfferOpen} />
       {/* <FakeAdBanner /> */}
       <TutorialOverlay step={game.tutorialStep} onSkip={game.skipTutorial} />
       {game.modal === 'pause' && <PauseModal onResume={game.resume} onRestart={game.restart} onHome={game.goHome} />}
-      {game.modal === 'unlock' && game.modalTile && <UnlockModal value={game.modalTile} onClaim={game.claimUnlock} />}
-      {game.modal === 'milestone' && game.milestoneInfo && <MilestoneModal info={game.milestoneInfo} onContinue={game.closeMilestone} />}
+      {game.modal === 'unlock' && game.modalTile && <UnlockModal value={game.modalTile} onClaim={game.claimUnlock} busy={game.adBusy} available={game.adAvailable} />}
+      {game.modal === 'milestone' && game.milestoneInfo && <MilestoneModal info={game.milestoneInfo} onClaim={game.claimUnlock} busy={game.adBusy} available={game.adAvailable} />}
       {game.modal === 'game-over' && <GameOverModal score={game.score} best={game.bestScore} onRestart={game.restart} onHome={game.goHome} />}
       {game.modal === 'first-goal' && <FirstGoalModal onContinue={game.closeGoal} />}
     </section>
