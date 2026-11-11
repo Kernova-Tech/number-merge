@@ -1,0 +1,28 @@
+const fs = require('node:fs'); const ts = require('typescript'); const assert = require('node:assert/strict');
+require.extensions['.ts'] = (module, filename) => module._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, filename);
+const data = new Map(); global.localStorage = { getItem: key => data.get(key) ?? null, setItem: (key, value) => data.set(key, value) };
+const { readWallet, recordChallengeMove, collectChallenge, collectDaily, purchaseBoosters, creditReward } = require('../src/game/economy.ts');
+const { challengeStatus } = require('../src/game/challenges.ts');
+const now = Date.UTC(2026, 10, 11, 12); const merges = values => values.map(value => ({ value, row: 0, col: 0 }));
+recordChallengeMove('run:1', [], now);
+assert.equal(challengeStatus(readWallet().challenges, [], now).completed, 0);
+assert.equal(collectChallenge('merges', now), null, 'cannot claim incomplete');
+recordChallengeMove('run:2', merges([16, 32, 64, 128]), now);
+recordChallengeMove('run:2', merges([16, 32, 64, 128]), now);
+assert.equal(readWallet().challenges.merges, 4, 'replayed move counted once');
+assert.equal(challengeStatus(readWallet().challenges, [], now).completed, 2);
+recordChallengeMove('run:3', merges([256, 512, 1024, 2048, 4096, 8192]), now);
+assert.equal(readWallet().challenges.merges, 10);
+for (const id of ['merges', 'tile', 'chain']) { assert(collectChallenge(id, now)); assert.equal(collectChallenge(id, now), null); }
+assert.equal(readWallet().gems, 545);
+collectDaily(now); purchaseBoosters('swap'); creditReward('other', 5);
+assert.equal(readWallet().challenges.merges, 10, 'other economy actions preserve challenge state');
+assert.equal(challengeStatus(readWallet().challenges, readWallet().transactions, now).ready, false);
+assert.equal(challengeStatus(readWallet().challenges, readWallet().transactions, now + 86400000).completed, 0);
+assert.equal(collectChallenge('chain', now + 86400000), null, 'old progress cannot pay a new day');
+recordChallengeMove('new-day', merges([128, 256, 512]), now + 86400000, false);
+assert.equal(readWallet().challenges.chain, 0, 'booster merges are not a shot chain');
+recordChallengeMove('new-shot', merges([16, 32, 64]), now + 86400000);
+assert(collectChallenge('chain', now + 86400000));
+assert.equal(collectChallenge('chain', now), null, 'backward clock cannot reopen old claims');
+console.log('PASS: actual merge metrics, empty moves, duplicate events, one-time claims, preservation across wallet actions, UTC reset, booster distinction, clock rollback.');

@@ -17,18 +17,23 @@ const NavIcon = ({ tab }: { tab: BottomNavTab }) => {
 const items: BottomNavTab[] = ['rewards', 'shop', 'home', 'play', 'profile'];
 
 interface BottomNavProps {
-  activeTab?: 'home' | 'profile';
+  activeTab?: 'home' | 'profile' | 'shop' | 'rewards';
   onPlay: () => void;
   onProfile: () => void;
   onHome?: () => void;
+  onShop?: () => void;
+  onRewards?: () => void;
+  rewardsReady?: boolean;
 }
 
-export function BottomNav({ activeTab = 'home', onPlay, onProfile, onHome }: BottomNavProps) {
+export function BottomNav({ activeTab = 'home', onPlay, onProfile, onHome, onShop, onRewards, rewardsReady = false }: BottomNavProps) {
   const { t } = useTranslation();
   const handleClick = (tab: BottomNavTab) => {
     if (tab === 'home') onHome?.();
     else if (tab === 'play') onPlay();
     else if (tab === 'profile') onProfile();
+    else if (tab === 'shop') onShop?.();
+    else if (tab === 'rewards') onRewards?.();
     else window.dispatchEvent(new CustomEvent('merge-toast', { detail: t('comingSoon') }));
   };
 
@@ -36,7 +41,7 @@ export function BottomNav({ activeTab = 'home', onPlay, onProfile, onHome }: Bot
     <nav className="bottom-nav" aria-label={t('mainNavigation')}>
       {items.map((item) => (
         <button key={item} className={activeTab === item ? 'active' : ''} onClick={() => handleClick(item)}>
-          <span className="nav-icon"><NavIcon tab={item} />{item === 'rewards' && <i />}</span>
+          <span className="nav-icon"><NavIcon tab={item} />{item === 'rewards' && rewardsReady && <i />}</span>
           <small>{t(item)}</small>
         </button>
       ))}

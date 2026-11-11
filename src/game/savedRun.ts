@@ -14,6 +14,8 @@ export interface SavedRun {
   rewardModal?: 'unlock' | 'milestone' | null;
   modalTile?: number | null;
   milestoneInfo?: MilestoneInfo | null;
+  runId?: string;
+  moveNumber?: number;
 }
 
 const tile = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 2 && Number.isInteger(Math.log2(value));
@@ -25,6 +27,8 @@ export function loadRun(): SavedRun | null {
     || !tile(run.currentTile) || !tile(run.nextTile) || !tile(run.highestBlock)
     || !Number.isFinite(run.score) || run.score < 0 || !Number.isFinite(run.totalXp) || run.totalXp < 0
     || !Number.isInteger(run.selectedColumn) || run.selectedColumn < 0 || run.selectedColumn >= COLS
+    || (run.runId !== undefined && typeof run.runId !== 'string')
+    || (run.moveNumber !== undefined && (!Number.isSafeInteger(run.moveNumber) || run.moveNumber < 0))
     || (run.rewardModal != null && run.rewardModal !== 'unlock' && run.rewardModal !== 'milestone')
     || (run.rewardModal != null && !tile(run.modalTile))
     || (run.milestoneInfo != null && (!tile(run.milestoneInfo.current) || !tile(run.milestoneInfo.next) || !tile(run.milestoneInfo.retired)))) return null;

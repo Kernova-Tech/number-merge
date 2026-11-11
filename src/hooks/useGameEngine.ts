@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { COLS, INITIAL_GEMS, INITIAL_HIGHEST, REWARD_VALUES, ROWS } from '../game/constants';
+import { COLS, INITIAL_HIGHEST, REWARD_VALUES, ROWS } from '../game/constants';
 import { cloneBoard, createDistinctInitialBoard, createEmptyBoard, createInitialBoard, removeRetiredTiles, resolveMerges, shootTile } from '../game/gameLogic';
 import { loadRun } from '../game/savedRun';
 import { getCurrentGoal, getMilestoneInfo, getRetiredValuesForHighest } from '../game/milestones';
@@ -7,6 +7,10 @@ import { generateWeightedTile, getActiveTilePool } from '../game/tileGeneration'
 import { calculateMergeXp, calculateMilestoneXp, getLevelProgress, getTotalXpForLevel } from '../game/leveling';
 import type { Board, BoosterType, MergeAnimationState, MergeEvent, MilestoneInfo, ModalType, Position, ShotResult, TileValue } from '../game/types';
 import { storage } from '../utils/storage';
+import { adsSupported, listenForAdResult, pendingAd, requestAd } from '../utils/rewardBridge';
+import { collectChallenge, collectDaily, creditReward, purchaseBoosters, readWallet, recordChallengeMove, syncWallet } from '../game/economy';
+import type { ChallengeId } from '../game/challenges';
+import { DAILY_GIFTS } from '../game/dailyRewards';
 
 interface Snapshot {
   board: Board;
@@ -63,14 +67,16 @@ export interface GameEngine {
   closeGoal: () => void;
   claimUnlock: (double: boolean) => void;
   closeMilestone: () => void;
+  adBusy: boolean;
+  adAvailable: boolean;
+  watchForBooster: (type: BoosterType) => void;
+  buyBooster: (type: BoosterType) => void;
+  setBoosterOfferOpen: (open: boolean) => void;
+  purchaseShopItem: (item: BoosterType | 'bundle') => boolean;
+  collectDailyGift: (double?: boolean) => boolean;
+  collectChallengeReward: (id: ChallengeId) => boolean;
   resolveCreatedAgain: (upgrade: boolean) => void;
 }
-
-const initialBoosters: Record<BoosterType, number> = storage.get('boosters', {
-  hammer: 3,
-  swap: 5,
-  undo: 3,
-});
 
 const PROMOTION_DURATION = 500;
 const MERGE_CONNECT_DURATION = 240;
@@ -80,6 +86,8 @@ const MERGE_CHAIN_PAUSE = 70;
 export function useGameEngine(): GameEngine {
   const [initialRun] = useState(loadRun);
   const savedRun = useRef(initialRun);
+  const runId = useRef(initialRun?.runId ?? crypto.randomUUID());
+  const moveNumber = useRef(initialRun?.moveNumber ?? 0);
   const [runActive, setRunActive] = useState(false);
   const [screen, setScreen] = useState<'home' | 'game'>('home');
   const [board, setBoard] = useState<Board>(createEmptyBoard);
@@ -88,15 +96,20 @@ export function useGameEngine(): GameEngine {
   const [selectedColumn, setSelectedColumn] = useState(2);
   const [score, setScore] = useState(0);
   const [bestScore, setBestScore] = useState(() => storage.get('best-score', 0));
-  const [gems, setGems] = useState(() => storage.get('gems', INITIAL_GEMS));
+  const [gems, setGems] = useState(() => readWallet().gems);
   const [highestBlock, setHighestBlock] = useState<TileValue>(() => storage.get('highest-block', INITIAL_HIGHEST));
   const [totalXp, setTotalXp] = useState(() => {
     const savedLevel = storage.get('level', 1);
     return storage.get('total-xp', getTotalXpForLevel(savedLevel));
   });
-  const [boosters, setBoosters] = useState(initialBoosters);
+  const [boosters, setBoosters] = useState(() => readWallet().boosters);
+  const [adBusy, setAdBusy] = useState(() => pendingAd() !== null);
+  const [adAvailable] = useState(adsSupported);
+  const claimLock = useRef(false);
+  const rewardTileRef = useRef<number | null>(null);
   const [modal, setModal] = useState<ModalType>(null);
   const [modalTile, setModalTile] = useState<TileValue | null>(null);
+  rewardTileRef.current = modalTile;
   const [milestoneInfo, setMilestoneInfo] = useState<MilestoneInfo | null>(null);
   const [tutorialStep, setTutorialStep] = useState(0);
   const [hammerActive, setHammerActive] = useState(false);
@@ -129,6 +142,44 @@ export function useGameEngine(): GameEngine {
   useEffect(() => storage.set('level', level), [level]);
   useEffect(() => storage.set('total-xp', totalXp), [totalXp]);
   useEffect(() => storage.set('boosters', boosters), [boosters]);
+  useEffect(() => syncWallet(gems, boosters), [gems, boosters]);
+  useEffect(() => listenForAdResult((request, result) => {
+    if (result.status === 'earned') {
+      if (request.placement === 'milestone_double' && request.milestone) {
+        creditReward(`milestone:${request.milestone}`, REWARD_VALUES[request.milestone] ?? 10);
+        const wallet = creditReward(`milestone-bonus:${request.milestone}`, REWARD_VALUES[request.milestone] ?? 10);
+        setGems(wallet.gems);
+        if (savedRun.current?.modalTile === request.milestone) {
+          savedRun.current = { ...savedRun.current, rewardModal: null, modalTile: null, milestoneInfo: null };
+          storage.set('saved-run', savedRun.current);
+        }
+        if (rewardTileRef.current === request.milestone) {
+          setModal(current => current === 'unlock' || current === 'milestone' ? null : current);
+          setMilestoneInfo(null);
+        }
+      } else if (request.placement === 'booster_refill' && request.booster) {
+        const wallet = creditReward(`ad:${request.requestId}`, 0, request.booster);
+        setBoosters(wallet.boosters);
+      } else if (request.placement === 'daily_double' && request.dailyId && request.dailyIndex !== undefined) {
+        const gift = DAILY_GIFTS[request.dailyIndex];
+        if (gift && gift.gems > 0 && !gift.booster) {
+          const wallet = creditReward(`bonus:${request.dailyId}`, gift.gems);
+          setGems(wallet.gems);
+        }
+      }
+    } else {
+      window.dispatchEvent(new CustomEvent('merge-toast', { detail: request.placement === 'milestone_double'
+        ? 'Collection not completed. Your normal reward is still available.'
+        : request.placement === 'daily_double' ? 'Your daily gift was collected. The extra bonus was not completed.'
+        : 'Collection not completed. No booster was added; you can try again or buy with gems.' }));
+    }
+    claimLock.current = false;
+    setAdBusy(!!pendingAd() && pendingAd()?.requestId !== request.requestId);
+  }, () => {
+    claimLock.current = false;
+    setAdBusy(false);
+    window.dispatchEvent(new CustomEvent('merge-toast', { detail: 'Collection is taking longer than expected. You can continue; an earned reward will still be delivered.' }));
+  }), []);
   useEffect(() => {
     if (!runActive || screen !== 'game' || tutorialStep > 0 || isShooting || isResolvingMerge || isPromotingNextTile) return;
     if (modal === 'game-over') {
@@ -137,7 +188,7 @@ export function useGameEngine(): GameEngine {
       return;
     }
     const rewardModal = modal === 'unlock' || modal === 'milestone' ? modal : null;
-    const run = { version: 1 as const, board: cloneBoard(board), score, currentTile, nextTile, selectedColumn, highestBlock, totalXp, rewardModal, modalTile, milestoneInfo };
+    const run = { version: 1 as const, board: cloneBoard(board), score, currentTile, nextTile, selectedColumn, highestBlock, totalXp, rewardModal, modalTile, milestoneInfo, runId: runId.current, moveNumber: moveNumber.current };
     savedRun.current = run;
     storage.set('saved-run', run);
   }, [runActive, screen, tutorialStep, isShooting, isResolvingMerge, isPromotingNextTile, modal, board, score, currentTile, nextTile, selectedColumn, highestBlock, totalXp, modalTile, milestoneInfo]);
@@ -157,6 +208,8 @@ export function useGameEngine(): GameEngine {
   }, []);
 
   const setupNormalGame = useCallback((previousBoard?: Board, previousShooter?: TileValue) => {
+    runId.current = crypto.randomUUID();
+    moveNumber.current = 0;
     setRunActive(true);
     if (promotionTimer.current) window.clearTimeout(promotionTimer.current);
     if (pendingTutorialTimer.current) window.clearTimeout(pendingTutorialTimer.current);
@@ -247,7 +300,7 @@ export function useGameEngine(): GameEngine {
   }, [board, currentTile, setupNormalGame]);
 
   const shoot = useCallback((requestedColumn?: number) => {
-    if (screen !== 'game' || modal || isShooting || isPromotingNextTile || isResolvingMerge || hammerActive) return;
+    if (pendingAd() || screen !== 'game' || modal || isShooting || isPromotingNextTile || isResolvingMerge || hammerActive) return;
     if (tutorialStep === 2 || tutorialStep === 4 || tutorialStep === 5) return;
     const column = tutorialStep > 0 ? 2 : Math.max(0, Math.min(COLS - 1, requestedColumn ?? selectedColumn));
     const tile = currentTile;
@@ -319,6 +372,7 @@ export function useGameEngine(): GameEngine {
       promotionTimer.current = window.setTimeout(() => {
         setNextTile(generatedNextTile);
         setIsPromotingNextTile(false);
+        recordChallengeMove(`${runId.current}:${++moveNumber.current}`, shotResult.merges);
         if (shotResult.gameOver) {
           setModal('game-over');
           return;
@@ -409,7 +463,7 @@ export function useGameEngine(): GameEngine {
   const resume = useCallback(() => setModal(null), []);
 
   const useBooster = useCallback((type: BoosterType) => {
-    if (modal || isShooting || isPromotingNextTile || isResolvingMerge || tutorialStep > 0 || boosters[type] <= 0) return;
+    if (pendingAd() || modal || isShooting || isPromotingNextTile || isResolvingMerge || tutorialStep > 0 || boosters[type] <= 0) return;
     if (type === 'hammer') {
       setHammerActive((active) => !active);
       return;
@@ -449,6 +503,9 @@ export function useGameEngine(): GameEngine {
     }
     historyRef.current = [...historyRef.current.slice(-9), { board: cloneBoard(board), score, currentTile, nextTile, highestBlock, totalXp }];
     const resolved = resolveMerges(next, { row: 0, col: 0 }, highestBlock);
+    // Booster merges count toward tile and merge objectives, not a shot chain.
+    const challengeMerges = resolved.merges;
+    if (challengeMerges.length) recordChallengeMove(`${runId.current}:${++moveNumber.current}`, challengeMerges, Date.now(), false);
     setBoard(resolved.board);
     setScore((value) => value + resolved.scoreGained);
     setBestScore((value) => Math.max(value, score + resolved.scoreGained));
@@ -471,15 +528,75 @@ export function useGameEngine(): GameEngine {
   }, [board, currentTile, hammerActive, highestBlock, nextTile, score, totalXp, spawnTile]);
 
   const claimUnlock = useCallback((double: boolean) => {
-    if (modalTile) setGems((amount) => amount + (REWARD_VALUES[modalTile] ?? 10) * (double ? 2 : 1));
-    setModal(null);
-  }, [modalTile]);
-
-  const closeMilestone = useCallback(() => {
-    if (modalTile) setGems((amount) => amount + (REWARD_VALUES[modalTile] ?? 10));
+    if (!modalTile || claimLock.current || pendingAd()) return;
+    if (double) {
+      try {
+        claimLock.current = true;
+        requestAd('milestone_double', { milestone: modalTile });
+        setAdBusy(true);
+      } catch {
+        claimLock.current = false;
+        window.dispatchEvent(new CustomEvent('merge-toast', { detail: 'Bonus collection is unavailable. You can still collect your normal reward.' }));
+      }
+      return;
+    }
+    claimLock.current = true;
+    const wallet = creditReward(`milestone:${modalTile}`, REWARD_VALUES[modalTile] ?? 10);
+    setGems(wallet.gems);
     setMilestoneInfo(null);
     setModal(null);
+    queueMicrotask(() => { claimLock.current = false; });
   }, [modalTile]);
+
+  const closeMilestone = useCallback(() => claimUnlock(false), [claimUnlock]);
+
+  const watchForBooster = useCallback((type: BoosterType) => {
+    if (pendingAd() || isShooting || isResolvingMerge || isPromotingNextTile || (modal && modal !== 'booster-refill') || tutorialStep > 0) return;
+    try { requestAd('booster_refill', { booster: type }); setAdBusy(true); }
+    catch { window.dispatchEvent(new CustomEvent('merge-toast', { detail: 'Bonus collection is unavailable. Please try again later.' })); }
+  }, [isShooting, isResolvingMerge, isPromotingNextTile, modal, tutorialStep]);
+
+  const buyBooster = useCallback((type: BoosterType) => {
+    if (pendingAd() || isShooting || isResolvingMerge || isPromotingNextTile || (modal && modal !== 'booster-refill') || tutorialStep > 0) return;
+    const wallet = purchaseBoosters(type);
+    if (!wallet) return;
+    setGems(wallet.gems);
+    setBoosters(wallet.boosters);
+  }, [isShooting, isResolvingMerge, isPromotingNextTile, modal, tutorialStep]);
+
+  const purchaseShopItem = useCallback((item: BoosterType | 'bundle') => {
+    if (pendingAd()) return false;
+    const wallet = purchaseBoosters(item);
+    if (!wallet) return false;
+    setGems(wallet.gems); setBoosters(wallet.boosters);
+    return true;
+  }, []);
+
+  const collectDailyGift = useCallback((double = false) => {
+    if (pendingAd()) return false;
+    const result = collectDaily();
+    if (!result) return false;
+    setGems(result.wallet.gems); setBoosters(result.wallet.boosters);
+    if (double && result.gift.gems > 0 && !result.gift.booster) {
+      try { requestAd('daily_double', { dailyId: result.id, dailyIndex: result.index }); setAdBusy(true); }
+      catch { window.dispatchEvent(new CustomEvent('merge-toast', { detail: 'Your daily gift was collected. Bonus collection is unavailable.' })); }
+    }
+    return true;
+  }, []);
+
+  const collectChallengeReward = useCallback((id: ChallengeId) => {
+    if (pendingAd()) return false;
+    const wallet = collectChallenge(id);
+    if (!wallet) return false;
+    setGems(wallet.gems);
+    return true;
+  }, []);
+
+  const setBoosterOfferOpen = useCallback((open: boolean) => {
+    if (pendingAd()) return;
+    setHammerActive(false);
+    setModal(open ? 'booster-refill' : null);
+  }, []);
 
   const resolveCreatedAgain = useCallback((upgrade: boolean) => {
     let upgradedMilestone: MilestoneInfo | null = null;
@@ -520,5 +637,6 @@ export function useGameEngine(): GameEngine {
     shotTargetRow, shotDuration, mergeEvents, mergeAnimation, combo, currentGoal,
     startGame, goHome, restart, shoot, selectColumn, moveSelection, pause,
     resume, useBooster, hitWithHammer, skipTutorial, closeGoal, claimUnlock, closeMilestone, resolveCreatedAgain,
+    adBusy, adAvailable, watchForBooster, buyBooster, setBoosterOfferOpen, purchaseShopItem, collectDailyGift, collectChallengeReward,
   };
 }

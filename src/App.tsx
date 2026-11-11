@@ -6,8 +6,9 @@ import { ProfileScreen } from './components/ProfileScreen';
 import { useGameEngine } from './hooks/useGameEngine';
 import { usePlayerProfile } from './hooks/usePlayerProfile';
 import { loadCatalogs } from './state/catalogStore';
+import { ShopRewardsScreen } from './components/ShopRewardsScreen';
 
-type AppRoute = 'home' | 'profile' | 'game';
+type AppRoute = 'home' | 'profile' | 'game' | 'shop' | 'rewards';
 
 const historyRouteKey = 'numberMergeRoute';
 
@@ -19,7 +20,10 @@ const getHistoryState = (route: AppRoute) => ({
 export default function App() {
   const game = useGameEngine();
   const playerProfile = usePlayerProfile();
-  const [homeView, setHomeView] = useState<'home' | 'profile'>('home');
+  const [homeView, setHomeView] = useState<'home' | 'profile' | 'shop' | 'rewards'>(() => {
+    const route = window.history.state?.[historyRouteKey];
+    return route === 'shop' || route === 'rewards' || route === 'profile' ? route : 'home';
+  });
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState('');
   const gameRef = useRef(game);
@@ -67,7 +71,7 @@ export default function App() {
       }
 
       if (currentGame.screen === 'game') currentGame.goHome();
-      setHomeView(route === 'profile' ? 'profile' : 'home');
+      setHomeView(route === 'profile' || route === 'shop' || route === 'rewards' ? route : 'home');
     };
 
     window.addEventListener('popstate', handleBrowserNavigation);
@@ -91,6 +95,14 @@ export default function App() {
     gameRef.current.startGame();
     pushRoute('game');
   }, [pushRoute]);
+
+  const showCollection = useCallback((view: 'shop' | 'rewards') => {
+    if (gameRef.current.screen === 'game') gameRef.current.goHome();
+    setHomeView(view);
+    pushRoute(view);
+  }, [pushRoute]);
+  const showShop = useCallback(() => showCollection('shop'), [showCollection]);
+  const showRewards = useCallback(() => showCollection('rewards'), [showCollection]);
 
   const saveProfile = useCallback((profile: Parameters<typeof playerProfile.updateProfile>[0]) => {
     playerProfile.updateProfile(profile);
@@ -122,7 +134,11 @@ export default function App() {
           onBack={showHome}
           onPlay={playGame}
           onSave={saveProfile}
+          onShop={showShop}
+          onRewards={showRewards}
         />
+      ) : homeView === 'shop' || homeView === 'rewards' ? (
+        <ShopRewardsScreen mode={homeView} game={game} onHome={showHome} onPlay={playGame} onProfile={showProfile} onShop={showShop} onRewards={showRewards} />
       ) : (
         <HomeScreen
           highestBlock={game.highestBlock}
@@ -133,6 +149,8 @@ export default function App() {
           profile={playerProfile.profile}
           onPlay={playGame}
           onProfile={showProfile}
+          onShop={showShop}
+          onRewards={showRewards}
         />
       )}
       {toast && <div className="toast">{toast}</div>}

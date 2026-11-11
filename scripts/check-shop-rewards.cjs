@@ -1,0 +1,66 @@
+const assert = require('node:assert/strict');
+const { chromium } = require(process.argv[2] || 'playwright');
+const { join } = require('node:path');
+const { tmpdir } = require('node:os');
+(async () => {
+ const browser = await chromium.launch({ headless: true, channel: 'chrome' });
+ try {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage(); const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.addInitScript(() => {
+   const realNow = Date.now.bind(Date); Date.now = () => realNow() + Number(sessionStorage.getItem('test-day-offset') || 0);
+   window.requests = [];
+   window.GameHost = { postMessage: message => window.requests.push(JSON.parse(message)) };
+  });
+  await page.goto(process.argv[3] || 'http://127.0.0.1:5174');
+  await page.getByRole('button', { name: 'Rewards', exact: true }).click();
+  await page.screenshot({ path: join(tmpdir(), 'merge-daily-ready.png'), animations: 'disabled' });
+  const wallet = () => page.evaluate(() => JSON.parse(localStorage.getItem('number-merge:wallet-v1')));
+  await page.getByRole('button', { name: 'Collect gift', exact: true }).click();
+  await page.getByText('Today’s gift collected!', { exact: true }).waitFor();
+  assert.equal((await wallet()).gems, 520);
+  await page.reload();
+  await page.getByText('Today’s gift collected!', { exact: true }).waitFor();
+  assert.equal((await wallet()).daily.count, 1);
+  assert.equal(await page.locator('.collection-screen .nav-icon > i').count(), 0, 'no fake ready notification');
+  await page.getByRole('button', { name: 'Shop', exact: true }).click();
+  await page.screenshot({ path: join(tmpdir(), 'merge-shop.png'), animations: 'disabled' });
+  await page.getByRole('button', { name: 'Buy Swap for 20 gems', exact: true }).click();
+  assert.equal((await wallet()).gems, 500);
+  assert.equal((await wallet()).boosters.swap, 6);
+  await page.getByRole('button', { name: /Get the kit/ }).click();
+  assert.equal((await wallet()).gems, 410);
+  assert.equal((await wallet()).boosters.hammer, 4);
+  assert.equal((await wallet()).boosters.swap, 7);
+  assert.equal((await wallet()).boosters.undo, 4);
+  assert.equal((await wallet()).daily.count, 1);
+  await page.goBack();
+  await page.getByText('Today’s gift collected!', { exact: true }).waitFor();
+  await page.evaluate(() => sessionStorage.setItem('test-day-offset', '86400000'));
+  await page.reload();
+  await page.getByRole('button', { name: /Collect ×2 · 50 gems/ }).click();
+  assert.equal((await wallet()).gems, 435, 'base gift is safe before bonus');
+  await page.evaluate(() => {
+   const request = JSON.parse(localStorage.getItem('number-merge:pending-ad'));
+   if (request.placement !== 'daily_double') throw new Error('wrong placement');
+   window.NumberMergeHost.receive({ requestId: request.requestId, status: 'earned' });
+   window.NumberMergeHost.receive({ requestId: request.requestId, status: 'earned' });
+  });
+  await page.waitForTimeout(100);
+  assert.equal((await wallet()).gems, 460, 'bonus granted once');
+  assert.equal((await wallet()).daily.count, 2);
+  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  assert.equal(await page.locator('.daily-reward-card .reward-dot').count(), 0);
+  assert.equal(await page.locator('.daily-reward-card button').innerText(), 'VIEW');
+  await page.getByRole('button', { name: 'Shop', exact: true }).click();
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.screenshot({ path: join(tmpdir(), 'merge-shop-small.png'), animations: 'disabled' });
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await page.evaluate(() => document.documentElement.dir = 'rtl');
+  await page.screenshot({ path: join(tmpdir(), 'merge-shop-rtl.png'), animations: 'disabled' });
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  assert.deepEqual(errors, []);
+  console.log('PASS: Shop/Rewards navigation, daily claim/reload/countdown, next-day progression, native double and duplicate, single/bundle purchases, correct dots, small viewport, RTL width, no browser errors.');
+ } finally { await browser.close(); }
+})().catch(error => { console.error(error); process.exit(1); });

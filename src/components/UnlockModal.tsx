@@ -2,8 +2,9 @@ import { REWARD_VALUES } from '../game/constants';
 import type { TileValue } from '../game/types';
 import { Tile } from './Tile';
 import { useTranslation } from '../i18n';
+import { RewardClaimButtons } from './RewardClaimButtons';
 
-export function UnlockModal({ value, onClaim }: { value: TileValue; onClaim: (double: boolean) => void }) {
+export function UnlockModal({ value, onClaim, busy, available }: { value: TileValue; onClaim: (double: boolean) => void; busy: boolean; available: boolean }) {
   const { t } = useTranslation();
   const reward = REWARD_VALUES[value] ?? 10;
   return (
@@ -15,8 +16,7 @@ export function UnlockModal({ value, onClaim }: { value: TileValue; onClaim: (do
         <div className="unlock-rays"><Tile value={value} crown /></div>
         <span className="reward-label">{t('yourReward')}</span>
         <strong className="reward-amount"><i>◆</i> +{reward}</strong>
-        <button className="modal-primary" onClick={() => onClaim(true)}>{t('claimDouble')}</button>
-        <button className="modal-link" onClick={() => onClaim(false)}>{t('noThanks')}</button>
+        <RewardClaimButtons value={value} busy={busy} available={available} onClaim={onClaim} />
       </div>
     </div>
   );

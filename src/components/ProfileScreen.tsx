@@ -8,6 +8,7 @@ import { CountryFlag } from './CountryFlag';
 import { type LanguageCode, useTranslation } from '../i18n';
 import { flagEmojiToCode, type CountryOption } from '../data/catalog';
 import { useCatalogStore } from '../state/catalogStore';
+import { useDailyGiftStatus } from '../hooks/useDailyGiftStatus';
 
 interface ProfileScreenProps {
   profile: PlayerProfile;
@@ -15,9 +16,12 @@ interface ProfileScreenProps {
   onSave: (profile: PlayerProfile) => void;
   onBack: () => void;
   onPlay: () => void;
+  onShop: () => void;
+  onRewards: () => void;
 }
 
-export function ProfileScreen({ profile, level, onSave, onBack, onPlay }: ProfileScreenProps) {
+export function ProfileScreen({ profile, level, onSave, onBack, onPlay, onShop, onRewards }: ProfileScreenProps) {
+  const daily = useDailyGiftStatus();
   const { language, setLanguage, t } = useTranslation();
   const catalog = useCatalogStore();
   const countries = useMemo(() => catalog.countries.map((country) => ({ ...country, value: country.code, label: country.name })), [catalog.countries]);
@@ -170,7 +174,7 @@ export function ProfileScreen({ profile, level, onSave, onBack, onPlay }: Profil
         <button className="save-profile" onClick={() => onSave(draft)}>{t('saveProfile')}</button>
         <button className="cancel-profile" onClick={onBack}>{t('cancel')}</button>
       </div>
-      <BottomNav activeTab="profile" onHome={onBack} onPlay={onPlay} onProfile={() => undefined} />
+      <BottomNav activeTab="profile" onHome={onBack} onPlay={onPlay} onProfile={() => undefined} onShop={onShop} onRewards={onRewards} rewardsReady={daily.hasReadyRewards} />
     </section>
   );
 }

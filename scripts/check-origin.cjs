@@ -19,7 +19,7 @@ const { tmpdir } = require('node:os');
  await page.locator('.origin-light i').waitFor();
  await page.waitForTimeout(900);
  for (const lane of [0, 1, 4]) {
-   if (await page.locator('.unlock-modal .modal-link').isVisible()) await page.locator('.unlock-modal .modal-link').click();
+   if (await page.locator('.unlock-modal .modal-secondary').isVisible()) await page.locator('.unlock-modal .modal-secondary').click();
    await page.evaluate(() => {
      window.lightSamples = [];
      const start = performance.now();
