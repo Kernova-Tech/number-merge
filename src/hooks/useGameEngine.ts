@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { COLS, INITIAL_HIGHEST, REWARD_VALUES, ROWS } from '../game/constants';
 import { cloneBoard, createDistinctInitialBoard, createEmptyBoard, createInitialBoard, removeRetiredTiles, resolveMerges, shootTile } from '../game/gameLogic';
+import { createDailySeedOpening, getDailySeedDay, readDailySeedRecord, loadDailySeedRun, nextSeededRandom, recordDailySeedProgress, saveDailySeedRun } from '../game/dailySeed';
+import type { DailySeedRecord, DailySeedRun, GameMode } from '../game/dailySeed';
 import { loadRun } from '../game/savedRun';
 import { getCurrentGoal, getMilestoneInfo, getRetiredValuesForHighest } from '../game/milestones';
 import { generateWeightedTile, getActiveTilePool } from '../game/tileGeneration';
@@ -13,6 +15,8 @@ import { adsSupported, listenForAdResult, pendingAd, requestAd, requestInterstit
 import { collectChallenge, collectDaily, creditReward, purchaseBoosters, readWallet, recordChallengeMove, syncWallet } from '../game/economy';
 import type { ChallengeId } from '../game/challenges';
 import { DAILY_GIFTS } from '../game/dailyRewards';
+import { getChallengeRun, getChallengeRunOutcome, readChallengeRunRecord, recordChallengeRun } from '../game/challengeRuns';
+import type { ChallengeRunId, ChallengeRunOutcome, ChallengeRunStats } from '../game/challengeRuns';
 
 interface Snapshot {
   board: Board;
@@ -25,6 +29,18 @@ interface Snapshot {
 
 export interface GameEngine {
   screen: 'home' | 'game';
+  mode: GameMode;
+  challengeId: ChallengeRunId | null;
+  challengeOutcome: Exclude<ChallengeRunOutcome, null> | null;
+  challengeBestScore: number;
+  runStats: ChallengeRunStats;
+  challengeMovesRemaining: number;
+  dailySeedDay: string;
+  dailySeedBestScore: number;
+  dailySeedLongestChain: number;
+  dailySeedRunLongestChain: number;
+  dailySeedRunBestAtStart: number;
+  dailySeedCanResume: boolean;
   board: Board;
   currentTile: TileValue;
   nextTile: TileValue;
@@ -56,6 +72,8 @@ export interface GameEngine {
   combo: number;
   currentGoal: number;
   startGame: () => void;
+  startDailySeed: () => void;
+  startChallengeRun: (id: ChallengeRunId) => void;
   goHome: () => void;
   restart: () => void;
   shoot: (column?: number) => void;
@@ -97,11 +115,29 @@ export function useGameEngine(): GameEngine {
   const lastAdBreakCheckpoint = useRef(initialRun?.lastAdBreakCheckpoint ?? 0);
   const [runActive, setRunActive] = useState(false);
   const [screen, setScreen] = useState<'home' | 'game'>('home');
+  const [gameMode, setGameMode] = useState<GameMode>('classic');
+  const [challengeId, setChallengeId] = useState<ChallengeRunId | null>(null);
+  const [challengeOutcome, setChallengeOutcome] = useState<Exclude<ChallengeRunOutcome, null> | null>(null);
+  const [challengeBestScore, setChallengeBestScore] = useState(0);
+  const [dailySeedDay, setDailySeedDay] = useState(() => getDailySeedDay());
+  const [dailySeedRecord, setDailySeedRecord] = useState<DailySeedRecord>(() => readDailySeedRecord(getDailySeedDay()));
+  const [dailySeedRunLongestChain, setDailySeedRunLongestChain] = useState(0);
+  const [initialDailyRun] = useState(loadDailySeedRun);
+  const [dailySeedRunBestAtStart, setDailySeedRunBestAtStart] = useState(() => initialDailyRun?.bestScoreAtStart ?? 0);
+  const dailyRunRef = useRef<DailySeedRun | null>(initialDailyRun);
+  const dailyRandomStateRef = useRef(initialDailyRun?.randomState ?? 0);
   const [board, setBoard] = useState<Board>(createEmptyBoard);
   const [currentTile, setCurrentTile] = useState<TileValue>(2);
   const [nextTile, setNextTile] = useState<TileValue>(4);
   const [selectedColumn, setSelectedColumn] = useState(2);
   const [score, setScore] = useState(0);
+  const initialStats: ChallengeRunStats = initialRun?.runStats ?? {
+    shots: 0,
+    highestTile: initialRun ? Math.max(INITIAL_HIGHEST, ...initialRun.board.flat().filter((value): value is number => value !== null)) : INITIAL_HIGHEST,
+    longestCascade: 0,
+  };
+  const [runStats, setRunStats] = useState<ChallengeRunStats>(initialStats);
+  const runStatsRef = useRef<ChallengeRunStats>(initialStats);
   const [bestScore, setBestScore] = useState(() => storage.get('best-score', 0));
   const [gems, setGems] = useState(() => readWallet().gems);
   const [highestBlock, setHighestBlock] = useState<TileValue>(() => storage.get('highest-block', INITIAL_HIGHEST));
@@ -138,6 +174,18 @@ export function useGameEngine(): GameEngine {
   const promotionTimer = useRef<number | null>(null);
   const mergeTimer = useRef<number | null>(null);
 
+  const replaceRunStats = useCallback((stats: ChallengeRunStats) => {
+    runStatsRef.current = stats;
+    setRunStats(stats);
+    return stats;
+  }, []);
+  const updateRunStats = useCallback((update: (stats: ChallengeRunStats) => ChallengeRunStats) => {
+    const next = update(runStatsRef.current);
+    runStatsRef.current = next;
+    setRunStats(next);
+    return next;
+  }, []);
+
   // Single source of truth: highestBlock. Both the current goal and the set of
   // retired tiles are derived from it — so a retired number can never reappear
   // and the two systems can never drift apart.
@@ -170,13 +218,27 @@ export function useGameEngine(): GameEngine {
     setModal('ad-break');
   }, []);
 
-  useEffect(() => storage.set('best-score', bestScore), [bestScore]);
+  useEffect(() => { if (gameMode === 'classic') storage.set('best-score', bestScore); }, [bestScore, gameMode]);
   useEffect(() => storage.set('gems', gems), [gems]);
-  useEffect(() => storage.set('highest-block', highestBlock), [highestBlock]);
+  useEffect(() => { if (gameMode === 'classic') storage.set('highest-block', highestBlock); }, [gameMode, highestBlock]);
   useEffect(() => storage.set('level', level), [level]);
-  useEffect(() => storage.set('total-xp', totalXp), [totalXp]);
+  useEffect(() => { if (gameMode === 'classic') storage.set('total-xp', totalXp); }, [gameMode, totalXp]);
   useEffect(() => storage.set('boosters', boosters), [boosters]);
   useEffect(() => syncWallet(gems, boosters), [gems, boosters]);
+  useEffect(() => {
+    if (screen !== 'home') return;
+    const refreshDailyRecord = () => {
+      const today = getDailySeedDay();
+      setDailySeedDay((current) => current === today ? current : today);
+      setDailySeedRecord((current) => current.day === today ? current : readDailySeedRecord(today));
+    };
+    const timer = window.setInterval(refreshDailyRecord, 60_000);
+    document.addEventListener('visibilitychange', refreshDailyRecord);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', refreshDailyRecord);
+    };
+  }, [screen]);
   useEffect(() => subscribeAdAvailability(() => setAdAvailable(adsSupported())), []);
   useEffect(() => listenForAdResult((request, result) => {
     if (result.status === 'earned') {
@@ -219,17 +281,42 @@ export function useGameEngine(): GameEngine {
     setModal(current => current === 'ad-break' ? null : current);
   }), [releaseQueuedAdBreak]);
   useEffect(() => {
-    if (!runActive || screen !== 'game' || tutorialStep > 0 || isShooting || isResolvingMerge || isPromotingNextTile) return;
+    if (gameMode !== 'classic' || !runActive || screen !== 'game' || tutorialStep > 0 || isShooting || isResolvingMerge || isPromotingNextTile) return;
     if (modal === 'game-over') {
       storage.set('saved-run', null);
       savedRun.current = null;
       return;
     }
     const rewardModal = modal === 'unlock' || modal === 'milestone' ? modal : null;
-    const run = { version: 1 as const, board: cloneBoard(board), score, currentTile, nextTile, selectedColumn, highestBlock, totalXp, rewardModal, modalTile, milestoneInfo, runId: runId.current, moveNumber: moveNumber.current, lastAdBreakCheckpoint: lastAdBreakCheckpoint.current, queuedAdBreakCheckpoint, adBreakCheckpoint: modal === 'ad-break' ? adBreakScore : null };
+    const run = { version: 1 as const, board: cloneBoard(board), score, currentTile, nextTile, selectedColumn, highestBlock, totalXp, runStats, rewardModal, modalTile, milestoneInfo, runId: runId.current, moveNumber: moveNumber.current, lastAdBreakCheckpoint: lastAdBreakCheckpoint.current, queuedAdBreakCheckpoint, adBreakCheckpoint: modal === 'ad-break' ? adBreakScore : null };
     savedRun.current = run;
     storage.set('saved-run', run);
-  }, [runActive, screen, tutorialStep, isShooting, isResolvingMerge, isPromotingNextTile, modal, board, score, currentTile, nextTile, selectedColumn, highestBlock, totalXp, modalTile, milestoneInfo, queuedAdBreakCheckpoint, adBreakScore]);
+  }, [gameMode, runActive, screen, tutorialStep, isShooting, isResolvingMerge, isPromotingNextTile, modal, board, score, currentTile, nextTile, selectedColumn, highestBlock, totalXp, runStats, modalTile, milestoneInfo, queuedAdBreakCheckpoint, adBreakScore]);
+  useEffect(() => {
+    if (gameMode !== 'daily-seed' || !runActive) return;
+    if (modal === 'daily-result') {
+      dailyRunRef.current = null;
+      saveDailySeedRun(null);
+      return;
+    }
+    if (screen !== 'game' || tutorialStep > 0 || isShooting || isResolvingMerge || isPromotingNextTile) return;
+    const run: DailySeedRun = {
+      version: 1,
+      day: dailySeedDay,
+      seed: dailyRunRef.current?.seed ?? 0,
+      randomState: dailyRandomStateRef.current,
+      board: cloneBoard(board),
+      score,
+      currentTile,
+      nextTile,
+      selectedColumn,
+      highestBlock,
+      longestChain: dailySeedRunLongestChain,
+      bestScoreAtStart: dailySeedRunBestAtStart,
+    };
+    dailyRunRef.current = run;
+    saveDailySeedRun(run);
+  }, [gameMode, runActive, modal, screen, tutorialStep, isShooting, isResolvingMerge, isPromotingNextTile, dailySeedDay, board, score, currentTile, nextTile, selectedColumn, highestBlock, dailySeedRunLongestChain, dailySeedRunBestAtStart]);
   useEffect(() => {
     if (modal === 'created-again') setModal(null);
   }, [modal]);
@@ -241,11 +328,19 @@ export function useGameEngine(): GameEngine {
   }, []);
 
   // Current and next always share the same highest-block-driven weighted pool.
-  const spawnTile = useCallback((highest: number, exclude: TileValue[] = []): TileValue => {
-    return generateWeightedTile(highest, Math.random, exclude);
-  }, []);
+  const spawnTile = useCallback((highest: number, exclude: TileValue[] = [], seeded = gameMode === 'daily-seed'): TileValue => {
+    const random = seeded ? () => {
+      const next = nextSeededRandom(dailyRandomStateRef.current);
+      dailyRandomStateRef.current = next.state;
+      return next.value;
+    } : Math.random;
+    return generateWeightedTile(highest, random, exclude);
+  }, [gameMode]);
 
-  const setupNormalGame = useCallback((previousBoard?: Board, previousShooter?: TileValue) => {
+  const setupNormalGame = useCallback((previousBoard?: Board, previousShooter?: TileValue, highest = highestBlock) => {
+    setGameMode('classic');
+    setChallengeId(null);
+    setChallengeOutcome(null);
     runId.current = createId();
     moveNumber.current = 0;
     lastAdBreakCheckpoint.current = 0;
@@ -254,12 +349,14 @@ export function useGameEngine(): GameEngine {
     if (promotionTimer.current) window.clearTimeout(promotionTimer.current);
     if (pendingTutorialTimer.current) window.clearTimeout(pendingTutorialTimer.current);
     if (mergeTimer.current) window.clearTimeout(mergeTimer.current);
-    const retired = getRetiredValuesForHighest(highestBlock);
+    const retired = getRetiredValuesForHighest(highest);
     const initialBoard = previousBoard ? createDistinctInitialBoard(previousBoard, retired) : createInitialBoard(retired);
-    setBoard(resolveMerges(initialBoard, { row: 0, col: 0 }, highestBlock).board);
+    const readyBoard = resolveMerges(initialBoard, { row: 0, col: 0 }, highest).board;
+    setBoard(readyBoard);
+    replaceRunStats({ shots: 0, highestTile: Math.max(INITIAL_HIGHEST, ...readyBoard.flat().filter((value): value is TileValue => value !== null)), longestCascade: 0 });
     setScore(0);
-    const firstTile = spawnTile(highestBlock, previousShooter ? [previousShooter] : []);
-    const followingTile = spawnTile(highestBlock, [firstTile]);
+    const firstTile = spawnTile(highest, previousShooter ? [previousShooter] : [], false);
+    const followingTile = spawnTile(highest, [firstTile], false);
     setCurrentTile(firstTile);
     setNextTile(followingTile);
     setSelectedColumn(2);
@@ -273,13 +370,129 @@ export function useGameEngine(): GameEngine {
     setIsResolvingMerge(false);
     setMergeAnimation(null);
     historyRef.current = [];
-  }, [highestBlock, spawnTile]);
+  }, [highestBlock, replaceRunStats, spawnTile]);
+
+  const setupDailySeedGame = useCallback((day: string, resumeSaved: boolean) => {
+    const saved = resumeSaved ? loadDailySeedRun(day) : null;
+    const record = readDailySeedRecord(day);
+    const opening = saved ?? (() => {
+      const generated = createDailySeedOpening(day);
+      return {
+        version: 1 as const,
+        day,
+        ...generated,
+        score: 0,
+        selectedColumn: 2,
+        longestChain: 0,
+        bestScoreAtStart: record.bestScore,
+      };
+    })();
+    setGameMode('daily-seed');
+    setChallengeId(null);
+    setChallengeOutcome(null);
+    setScreen('game');
+    setRunActive(true);
+    setDailySeedDay(day);
+    setDailySeedRecord(record);
+    setDailySeedRunLongestChain(opening.longestChain);
+    setDailySeedRunBestAtStart(opening.bestScoreAtStart);
+    dailyRunRef.current = opening;
+    dailyRandomStateRef.current = opening.randomState;
+    saveDailySeedRun(opening);
+    if (promotionTimer.current) window.clearTimeout(promotionTimer.current);
+    if (pendingTutorialTimer.current) window.clearTimeout(pendingTutorialTimer.current);
+    if (mergeTimer.current) window.clearTimeout(mergeTimer.current);
+    runId.current = createId();
+    moveNumber.current = 0;
+    setBoard(cloneBoard(opening.board));
+    replaceRunStats({ shots: 0, highestTile: Math.max(INITIAL_HIGHEST, ...opening.board.flat().filter((value): value is TileValue => value !== null)), longestCascade: opening.longestChain });
+    setScore(opening.score);
+    setCurrentTile(opening.currentTile);
+    setNextTile(opening.nextTile);
+    setSelectedColumn(opening.selectedColumn);
+    setHighestBlock(opening.highestBlock);
+    setTutorialStep(0);
+    setModal(null);
+    setModalTile(null);
+    setMilestoneInfo(null);
+    setAdBreakScore(null);
+    setQueuedAdBreakCheckpoint(null);
+    queuedAdBreakCheckpointRef.current = null;
+    setHammerActive(false);
+    setIsShooting(false);
+    setIsPromotingNextTile(false);
+    setIsResolvingMerge(false);
+    setShotTileValue(null);
+    setMergeEvents([]);
+    setMergeAnimation(null);
+    setCombo(0);
+    historyRef.current = [];
+  }, [replaceRunStats]);
+
+  const setupChallengeRun = useCallback((id: ChallengeRunId) => {
+    if (promotionTimer.current) window.clearTimeout(promotionTimer.current);
+    if (pendingTutorialTimer.current) window.clearTimeout(pendingTutorialTimer.current);
+    if (mergeTimer.current) window.clearTimeout(mergeTimer.current);
+    runId.current = createId();
+    moveNumber.current = 0;
+    lastAdBreakCheckpoint.current = 0;
+    queuedAdBreakCheckpointRef.current = null;
+    setQueuedAdBreakCheckpoint(null);
+    setGameMode('challenge');
+    setChallengeId(id);
+    setChallengeOutcome(null);
+    setChallengeBestScore(readChallengeRunRecord(id).bestScore);
+    setScreen('game');
+    setRunActive(true);
+    const openingBoard = resolveMerges(createInitialBoard(), { row: 0, col: 0 }, INITIAL_HIGHEST).board;
+    setBoard(openingBoard);
+    setScore(0);
+    setHighestBlock(INITIAL_HIGHEST);
+    const firstTile = spawnTile(INITIAL_HIGHEST, [], false);
+    setCurrentTile(firstTile);
+    setNextTile(spawnTile(INITIAL_HIGHEST, [firstTile], false));
+    setSelectedColumn(2);
+    replaceRunStats({ shots: 0, highestTile: Math.max(INITIAL_HIGHEST, ...openingBoard.flat().filter((value): value is TileValue => value !== null)), longestCascade: 0 });
+    setTutorialStep(0);
+    setModal(null);
+    setModalTile(null);
+    setMilestoneInfo(null);
+    setAdBreakScore(null);
+    setHammerActive(false);
+    setIsShooting(false);
+    setIsPromotingNextTile(false);
+    setIsResolvingMerge(false);
+    setShotTileValue(null);
+    setMergeEvents([]);
+    setMergeAnimation(null);
+    setCombo(0);
+    historyRef.current = [];
+  }, [replaceRunStats, spawnTile]);
+
+  const startDailySeed = useCallback(() => {
+    if (pendingAd()) return;
+    setupDailySeedGame(getDailySeedDay(), true);
+  }, [setupDailySeedGame]);
+
+  const startChallengeRun = useCallback((id: ChallengeRunId) => {
+    if (pendingAd()) return;
+    setupChallengeRun(id);
+  }, [setupChallengeRun]);
 
   const startGame = useCallback(() => {
+    const returningFromAnotherMode = gameMode !== 'classic';
+    setGameMode('classic');
+    setChallengeId(null);
+    setChallengeOutcome(null);
     setScreen('game');
     const saved = savedRun.current;
     if (saved) {
       setBoard(cloneBoard(saved.board));
+      replaceRunStats(saved.runStats ?? {
+        shots: 0,
+        highestTile: Math.max(INITIAL_HIGHEST, ...saved.board.flat().filter((value): value is TileValue => value !== null)),
+        longestCascade: 0,
+      });
       setScore(saved.score);
       setCurrentTile(saved.currentTile);
       setNextTile(saved.nextTile);
@@ -297,8 +510,12 @@ export function useGameEngine(): GameEngine {
       setRunActive(true);
       return;
     }
-    if (!storage.get('tutorial-complete', false) && !retiredTiles.includes(2)) {
-      setBoard(createEmptyBoard());
+    const classicHighest = storage.get('highest-block', INITIAL_HIGHEST);
+    setHighestBlock(classicHighest);
+    if (!storage.get('tutorial-complete', false) && !getRetiredValuesForHighest(classicHighest).includes(2)) {
+      const tutorialBoard = createEmptyBoard();
+      setBoard(tutorialBoard);
+      replaceRunStats({ shots: 0, highestTile: INITIAL_HIGHEST, longestCascade: 0 });
       setScore(0);
       setCurrentTile(2);
       setNextTile(2);
@@ -307,9 +524,9 @@ export function useGameEngine(): GameEngine {
       setModal(null);
       historyRef.current = [];
     } else {
-      setupNormalGame(board, currentTile);
+      setupNormalGame(returningFromAnotherMode ? undefined : board, returningFromAnotherMode ? undefined : currentTile, classicHighest);
     }
-  }, [board, currentTile, retiredTiles, setupNormalGame]);
+  }, [board, currentTile, gameMode, replaceRunStats, setupNormalGame]);
 
   const goHome = useCallback(() => {
     if (isShooting || isPromotingNextTile || isResolvingMerge) return;
@@ -318,17 +535,31 @@ export function useGameEngine(): GameEngine {
     if (mergeTimer.current) window.clearTimeout(mergeTimer.current);
     setModal(null);
     setScreen('home');
+    const today = getDailySeedDay();
+    setDailySeedDay(today);
+    setDailySeedRecord(readDailySeedRecord(today));
+    if (gameMode !== 'classic') {
+      setHighestBlock(savedRun.current?.highestBlock ?? storage.get('highest-block', INITIAL_HIGHEST));
+    }
     setTutorialStep(0);
     setIsShooting(false);
     setIsPromotingNextTile(false);
     setIsResolvingMerge(false);
     setMergeAnimation(null);
-  }, [isShooting, isPromotingNextTile, isResolvingMerge]);
+  }, [gameMode, isShooting, isPromotingNextTile, isResolvingMerge]);
 
   const restart = useCallback(() => {
+    if (gameMode === 'daily-seed') {
+      setupDailySeedGame(getDailySeedDay(), false);
+      return;
+    }
+    if (gameMode === 'challenge') {
+      setupChallengeRun(challengeId ?? 'milestone-sprint');
+      return;
+    }
     setScreen('game');
     setupNormalGame(board, currentTile);
-  }, [board, currentTile, setupNormalGame]);
+  }, [board, challengeId, currentTile, gameMode, setupChallengeRun, setupDailySeedGame, setupNormalGame]);
 
   const finishTutorial = useCallback(() => {
     storage.set('tutorial-complete', true);
@@ -357,6 +588,13 @@ export function useGameEngine(): GameEngine {
     const targetRow = matchingHit ? columnHeight - 1 : Math.min(columnHeight, ROWS - 1);
     const flightDuration = 190 + (ROWS - 1 - targetRow) * 23;
     const result = shootTile(board, column, tile, highestBlock);
+    const shotStats = tutorialStep === 0
+      ? updateRunStats((stats) => ({
+        shots: stats.shots + 1,
+        highestTile: Math.max(stats.highestTile, ...result.merges.map((merge) => merge.value)),
+        longestCascade: Math.max(stats.longestCascade, result.merges.length),
+      }))
+      : runStatsRef.current;
     setSelectedColumn(column);
     setIsShooting(true);
     setShotTileValue(tile);
@@ -401,7 +639,7 @@ export function useGameEngine(): GameEngine {
 
       const created = shotResult.merges.length ? Math.max(...shotResult.merges.map((merge) => merge.value)) : undefined;
       const isNewRecord = created !== undefined && created > highestBlock;
-      const scoreCheckpoint = getCrossedScoreCheckpoint(score, nextScore);
+      const scoreCheckpoint = gameMode === 'classic' ? getCrossedScoreCheckpoint(score, nextScore) : null;
 
       // The next queue immediately adopts the pool unlocked by this shot.
       const nextHighest = isNewRecord ? (created as TileValue) : highestBlock;
@@ -419,7 +657,35 @@ export function useGameEngine(): GameEngine {
       promotionTimer.current = window.setTimeout(() => {
         setNextTile(generatedNextTile);
         setIsPromotingNextTile(false);
-        recordChallengeMove(`${runId.current}:${++moveNumber.current}`, shotResult.merges);
+        if (gameMode === 'classic') recordChallengeMove(`${runId.current}:${++moveNumber.current}`, shotResult.merges);
+
+        if (gameMode === 'daily-seed') {
+          const longestChain = Math.max(dailySeedRunLongestChain, shotResult.merges.length);
+          setDailySeedRunLongestChain(longestChain);
+          const record = recordDailySeedProgress(dailySeedDay, nextScore, longestChain);
+          setDailySeedRecord(record);
+          setHighestBlock(nextHighest);
+          if (shotResult.gameOver) {
+            dailyRunRef.current = null;
+            saveDailySeedRun(null);
+            setModal('daily-result');
+          }
+          return;
+        }
+
+        if (gameMode === 'challenge') {
+          const id = challengeId ?? 'milestone-sprint';
+          const outcome = getChallengeRunOutcome(id, shotStats, shotResult.gameOver);
+          setHighestBlock(nextHighest);
+          if (outcome) {
+            const record = recordChallengeRun(id, shotStats, nextScore, outcome);
+            setChallengeBestScore(record.bestScore);
+            setChallengeOutcome(outcome);
+            setModal('challenge-result');
+          }
+          return;
+        }
+
         if (shotResult.gameOver) {
           setModal('game-over');
           return;
@@ -478,7 +744,19 @@ export function useGameEngine(): GameEngine {
       if (result.gameOver && result.landing === null) {
         setIsShooting(false);
         setShotTileValue(null);
-        setModal('game-over');
+        if (gameMode === 'challenge') {
+          const id = challengeId ?? 'milestone-sprint';
+          const record = recordChallengeRun(id, shotStats, score, 'failed');
+          setChallengeBestScore(record.bestScore);
+          setChallengeOutcome('failed');
+          setModal('challenge-result');
+          return;
+        }
+        if (gameMode === 'daily-seed') {
+          dailyRunRef.current = null;
+          saveDailySeedRun(null);
+        }
+        setModal(gameMode === 'daily-seed' ? 'daily-result' : 'game-over');
         return;
       }
 
@@ -488,8 +766,10 @@ export function useGameEngine(): GameEngine {
       const earnedXp = calculateMergeXp(result.merges)
         + (created && created > highestBlock ? calculateMilestoneXp(highestBlock, created) : 0);
       setScore(nextScore);
-      setTotalXp((xp) => xp + earnedXp);
-      setBestScore((oldBest) => Math.max(oldBest, nextScore));
+      if (gameMode === 'classic') {
+        setTotalXp((xp) => xp + earnedXp);
+        setBestScore((oldBest) => Math.max(oldBest, nextScore));
+      }
       setCombo(result.merges.length);
       if (result.mergeSteps.length) {
         setIsResolvingMerge(true);
@@ -500,7 +780,7 @@ export function useGameEngine(): GameEngine {
         promoteAndFinish(result, nextScore);
       }
     }, flightDuration);
-  }, [board, currentTile, finishTutorial, hammerActive, highestBlock, isPromotingNextTile, isResolvingMerge, isShooting, modal, nextTile, queueOrShowAdBreak, retiredTiles, score, screen, selectedColumn, spawnTile, totalXp, tutorialStep]);
+  }, [board, challengeId, currentTile, dailySeedDay, dailySeedRunLongestChain, finishTutorial, gameMode, hammerActive, highestBlock, isPromotingNextTile, isResolvingMerge, isShooting, modal, nextTile, queueOrShowAdBreak, retiredTiles, score, screen, selectedColumn, spawnTile, totalXp, tutorialStep, updateRunStats]);
 
   const selectColumn = useCallback((column: number) => setSelectedColumn(Math.max(0, Math.min(COLS - 1, column))), []);
   const moveSelection = useCallback((delta: number) => {
@@ -518,7 +798,7 @@ export function useGameEngine(): GameEngine {
   }, []);
 
   const useBooster = useCallback((type: BoosterType) => {
-    if (pendingAd() || modal || isShooting || isPromotingNextTile || isResolvingMerge || tutorialStep > 0 || boosters[type] <= 0) return;
+    if (gameMode !== 'classic' || pendingAd() || modal || isShooting || isPromotingNextTile || isResolvingMerge || tutorialStep > 0 || boosters[type] <= 0) return;
     if (type === 'hammer') {
       setHammerActive((active) => !active);
       return;
@@ -546,10 +826,10 @@ export function useGameEngine(): GameEngine {
       : previous.nextTile;
     setCurrentTile(restoredCurrent);
     setNextTile(restoredNext);
-  }, [boosters, highestBlock, isPromotingNextTile, isResolvingMerge, isShooting, modal, nextTile, spawnTile, tutorialStep]);
+  }, [boosters, gameMode, highestBlock, isPromotingNextTile, isResolvingMerge, isShooting, modal, nextTile, spawnTile, tutorialStep]);
 
   const hitWithHammer = useCallback(({ row, col }: Position) => {
-    if (!hammerActive || board[row][col] === null) return;
+    if (gameMode !== 'classic' || !hammerActive || board[row][col] === null) return;
     const next = cloneBoard(board);
     next[row][col] = null;
     for (let column = 0; column < COLS; column += 1) {
@@ -565,6 +845,7 @@ export function useGameEngine(): GameEngine {
     const nextScore = score + resolved.scoreGained;
     const scoreCheckpoint = getCrossedScoreCheckpoint(score, nextScore);
     setScore(nextScore);
+    updateRunStats((stats) => ({ ...stats, highestTile: Math.max(stats.highestTile, ...resolved.merges.map((merge) => merge.value)) }));
     setBestScore((value) => Math.max(value, nextScore));
     const created = Math.max(highestBlock, ...resolved.merges.map((merge) => merge.value));
     setTotalXp((value) => value + calculateMergeXp(resolved.merges) + calculateMilestoneXp(highestBlock, created));
@@ -585,7 +866,7 @@ export function useGameEngine(): GameEngine {
     }
     setBoosters((counts) => ({ ...counts, hammer: counts.hammer - 1 }));
     setHammerActive(false);
-  }, [board, currentTile, hammerActive, highestBlock, nextTile, queueOrShowAdBreak, score, totalXp, spawnTile]);
+  }, [board, currentTile, gameMode, hammerActive, highestBlock, nextTile, queueOrShowAdBreak, score, totalXp, spawnTile, updateRunStats]);
 
   const claimUnlock = useCallback((double: boolean) => {
     if (!modalTile || claimLock.current || pendingAd()) return;
@@ -690,12 +971,17 @@ export function useGameEngine(): GameEngine {
   }, [gems, modalTile, retiredTiles, spawnTile]);
 
   return {
-    screen, board, currentTile, nextTile, selectedColumn, score, bestScore, gems, highestBlock, level,
+    screen, mode: gameMode, challengeId, challengeOutcome, challengeBestScore, runStats,
+    challengeMovesRemaining: challengeId ? Math.max(0, getChallengeRun(challengeId).shotLimit - runStats.shots) : 0,
+    dailySeedDay, dailySeedBestScore: dailySeedRecord.bestScore,
+    dailySeedLongestChain: dailySeedRecord.longestChain, dailySeedRunLongestChain, dailySeedRunBestAtStart,
+    dailySeedCanResume: dailyRunRef.current?.day === dailySeedDay,
+    board, currentTile, nextTile, selectedColumn, score, bestScore: gameMode === 'daily-seed' ? dailySeedRecord.bestScore : bestScore, gems, highestBlock, level,
     totalXp, xpIntoLevel: levelState.xpIntoLevel, xpToNextLevel: levelState.xpToNextLevel, levelProgress: levelState.progressPercent,
     boosters, modal, modalTile, milestoneInfo, retiredTiles, tutorialStep, hammerActive, isShooting,
     isPromotingNextTile, isResolvingMerge, shotTile: shotTileValue,
     shotTargetRow, shotDuration, mergeEvents, mergeAnimation, combo, currentGoal,
-    startGame, goHome, restart, shoot, selectColumn, moveSelection, pause,
+    startGame, startDailySeed, startChallengeRun, goHome, restart, shoot, selectColumn, moveSelection, pause,
     resume, useBooster, hitWithHammer, skipTutorial, closeGoal, claimUnlock, closeMilestone, resolveCreatedAgain,
     adBusy, adAvailable, adBreakScore, requestAdBreak, finishAdBreak, watchForBooster, buyBooster, setBoosterOfferOpen, purchaseShopItem, collectDailyGift, collectChallengeReward,
   };

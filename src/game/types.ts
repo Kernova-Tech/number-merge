@@ -4,7 +4,7 @@ export type Cell = TileValue | null;
 export type Board = Cell[][];
 export type GameStatus = 'home' | 'playing' | 'paused' | 'game-over';
 export type BoosterType = 'hammer' | 'swap' | 'undo';
-export type ModalType = 'unlock' | 'milestone' | 'created-again' | 'pause' | 'game-over' | 'first-goal' | 'booster-refill' | 'ad-break' | null;
+export type ModalType = 'unlock' | 'milestone' | 'created-again' | 'pause' | 'game-over' | 'daily-result' | 'challenge-result' | 'first-goal' | 'booster-refill' | 'ad-break' | null;
 
 export interface MilestoneInfo {
   current: TileValue;

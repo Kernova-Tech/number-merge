@@ -7,8 +7,9 @@ import { useGameEngine } from './hooks/useGameEngine';
 import { usePlayerProfile } from './hooks/usePlayerProfile';
 import { loadCatalogs } from './state/catalogStore';
 import { ShopRewardsScreen } from './components/ShopRewardsScreen';
+import type { ChallengeRunId } from './game/challengeRuns';
 
-type AppRoute = 'home' | 'profile' | 'game' | 'shop' | 'rewards';
+type AppRoute = 'home' | 'profile' | 'game' | 'daily' | 'shop' | 'rewards';
 
 const historyRouteKey = 'numberMergeRoute';
 
@@ -52,21 +53,28 @@ export default function App() {
   useEffect(() => {
     if (!window.history.state?.[historyRouteKey]) {
       window.history.replaceState(getHistoryState('home'), '', window.location.href);
+    } else if (window.history.state?.[historyRouteKey] === 'daily') {
+      gameRef.current.startDailySeed();
+    } else if (window.history.state?.[historyRouteKey] === 'game') {
+      gameRef.current.startGame();
     }
 
     const handleBrowserNavigation = (event: PopStateEvent) => {
       const route = (event.state?.[historyRouteKey] ?? 'home') as AppRoute;
       const currentGame = gameRef.current;
 
-      if (currentGame.screen === 'game' && currentGame.modal === null && route !== 'game') {
+      if (currentGame.screen === 'game' && currentGame.modal === null && route !== 'game' && route !== 'daily') {
         currentGame.pause();
-        window.history.pushState(getHistoryState('game'), '', window.location.href);
+        window.history.pushState(getHistoryState(currentGame.mode === 'daily-seed' ? 'daily' : 'game'), '', window.location.href);
         return;
       }
 
-      if (route === 'game') {
+      if (route === 'game' || route === 'daily') {
         setHomeView('home');
-        if (currentGame.screen !== 'game') currentGame.startGame();
+        if (currentGame.screen !== 'game' || (route === 'daily') !== (currentGame.mode === 'daily-seed')) {
+          if (route === 'daily') currentGame.startDailySeed();
+          else currentGame.startGame();
+        }
         return;
       }
 
@@ -93,6 +101,18 @@ export default function App() {
   const playGame = useCallback(() => {
     setHomeView('home');
     gameRef.current.startGame();
+    pushRoute('game');
+  }, [pushRoute]);
+
+  const playDailySeed = useCallback(() => {
+    setHomeView('home');
+    gameRef.current.startDailySeed();
+    pushRoute('daily');
+  }, [pushRoute]);
+
+  const playChallengeRun = useCallback((id: ChallengeRunId) => {
+    setHomeView('home');
+    gameRef.current.startChallengeRun(id);
     pushRoute('game');
   }, [pushRoute]);
 
@@ -146,8 +166,14 @@ export default function App() {
           levelProgress={game.levelProgress}
           gems={game.gems}
           bestScore={game.bestScore}
+          dailySeedDay={game.dailySeedDay}
+          dailySeedBestScore={game.dailySeedBestScore}
+          dailySeedLongestChain={game.dailySeedLongestChain}
+          dailySeedCanResume={game.dailySeedCanResume}
           profile={playerProfile.profile}
           onPlay={playGame}
+          onDailySeed={playDailySeed}
+          onChallengeRun={playChallengeRun}
           onProfile={showProfile}
           onShop={showShop}
           onRewards={showRewards}

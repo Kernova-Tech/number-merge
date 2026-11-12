@@ -12,6 +12,7 @@ export interface SavedRun {
   selectedColumn: number;
   highestBlock: number;
   totalXp: number;
+  runStats?: { shots: number; highestTile: number; longestCascade: number };
   rewardModal?: 'unlock' | 'milestone' | null;
   modalTile?: number | null;
   milestoneInfo?: MilestoneInfo | null;
@@ -30,6 +31,9 @@ export function loadRun(): SavedRun | null {
     || !run.board.every((row) => Array.isArray(row) && row.length === COLS && row.every((cell) => cell === null || tile(cell)))
     || !tile(run.currentTile) || !tile(run.nextTile) || !tile(run.highestBlock)
     || !Number.isFinite(run.score) || run.score < 0 || !Number.isFinite(run.totalXp) || run.totalXp < 0
+    || (run.runStats !== undefined && (!run.runStats || typeof run.runStats !== 'object'
+      || !Number.isSafeInteger(run.runStats.shots) || run.runStats.shots < 0
+      || !tile(run.runStats.highestTile) || !Number.isSafeInteger(run.runStats.longestCascade) || run.runStats.longestCascade < 0))
     || !Number.isInteger(run.selectedColumn) || run.selectedColumn < 0 || run.selectedColumn >= COLS
     || (run.runId !== undefined && typeof run.runId !== 'string')
     || (run.moveNumber !== undefined && (!Number.isSafeInteger(run.moveNumber) || run.moveNumber < 0))

@@ -1,8 +1,17 @@
+import type { ChallengeRunStats } from '../game/challengeRuns';
 import { useTranslation } from '../i18n';
+import { RunRecapStats } from './RunRecapStats';
 
-interface GameOverProps { score: number; best: number; onRestart: () => void; onHome: () => void }
+interface GameOverProps {
+  score: number;
+  best: number;
+  stats: ChallengeRunStats;
+  nextMilestone: number;
+  onRestart: () => void;
+  onHome: () => void;
+}
 
-export function GameOverModal({ score, best, onRestart, onHome }: GameOverProps) {
+export function GameOverModal({ score, best, stats, nextMilestone, onRestart, onHome }: GameOverProps) {
   const { t, formatNumber } = useTranslation();
   return (
     <div className="modal-layer">
@@ -14,6 +23,7 @@ export function GameOverModal({ score, best, onRestart, onHome }: GameOverProps)
           <div><small>{t('score')}</small><strong>{formatNumber(score)}</strong></div>
           <div><small>♛ {t('best')}</small><strong>{formatNumber(best)}</strong></div>
         </div>
+        <RunRecapStats stats={stats} fourthLabel={t('nextMilestone')} fourthValue={nextMilestone} />
         <button className="modal-primary" onClick={onRestart}>{t('playAgain')}</button>
         <button className="modal-link" onClick={onHome}>{t('backHome')}</button>
       </div>

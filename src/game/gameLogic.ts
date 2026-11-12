@@ -8,13 +8,13 @@ export const createEmptyBoard = (): Board =>
 
 export const cloneBoard = (board: Board): Board => board.map((row) => [...row]);
 
-export function createInitialBoard(retiredTiles: TileValue[] = []): Board {
+export function createInitialBoard(retiredTiles: TileValue[] = [], random = Math.random): Board {
   const board = createEmptyBoard();
   const pool = [...new Set(getSpawnPool(retiredTiles))]; // unique non-retired values
   for (let col = 0; col < COLS; col += 1) {
-    const height = Math.random() > 0.55 ? 2 : 1;
+    const height = random() > 0.55 ? 2 : 1;
     for (let row = 0; row < height; row += 1) {
-      board[row][col] = pool[Math.floor(Math.random() * pool.length)];
+      board[row][col] = pool[Math.floor(random() * pool.length)];
     }
   }
   return board;
