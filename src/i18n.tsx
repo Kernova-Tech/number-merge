@@ -44,6 +44,7 @@ const en: Dictionary = {
   newMilestone: 'NEW MILESTONE', newBlockUnlocked: 'New Block Unlocked!', yourReward: 'YOUR REWARD', claimDouble: 'Claim ×2', noThanks: 'No thanks',
   progressionMilestone: 'PROGRESSION MILESTONE', reached: '{value} Reached!', blockRetired: 'BLOCK RETIRED', noLongerAppear: '{value} will no longer appear', nextMilestone: 'NEXT MILESTONE', continue: 'Continue',
   rareMerge: 'RARE MERGE', createdAgain: 'Created Again!', createdAgainBody: '{value} created again. Double it?',
+  breakCheckpoint: 'SCORE CHECKPOINT', breakTitle: 'Well played!', breakBody: 'You reached {score}. Take a quick breather.', breakCountdown: 'Continuing in', breakWaiting: 'Getting your game ready…',
 };
 
 const packs: Record<Exclude<LanguageCode, 'en'>, Dictionary> = {

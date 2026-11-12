@@ -5,6 +5,7 @@ import { Board } from './Board';
 import { BoosterBar } from './BoosterBar';
 // import { FakeAdBanner } from './FakeAdBanner';
 import { FirstGoalModal } from './FirstGoalModal';
+import { AdBreakModal } from './AdBreakModal';
 import { GameOverModal } from './GameOverModal';
 import { PauseModal } from './PauseModal';
 import { MilestoneModal } from './MilestoneModal';
@@ -71,6 +72,7 @@ export function GameScreen({ game }: { game: GameEngine }) {
       {game.modal === 'milestone' && game.milestoneInfo && <MilestoneModal info={game.milestoneInfo} onClaim={game.claimUnlock} busy={game.adBusy} available={game.adAvailable} />}
       {game.modal === 'game-over' && <GameOverModal score={game.score} best={game.bestScore} onRestart={game.restart} onHome={game.goHome} />}
       {game.modal === 'first-goal' && <FirstGoalModal onContinue={game.closeGoal} />}
+      {game.modal === 'ad-break' && game.adBreakScore !== null && <AdBreakModal score={game.adBreakScore} onRequestBreak={game.requestAdBreak} onComplete={game.finishAdBreak} />}
     </section>
   );
 }

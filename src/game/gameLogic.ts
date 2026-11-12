@@ -81,6 +81,42 @@ function chooseMergeNeighbor(active: Position, board: Board, value: TileValue): 
   return candidates.sort((a, b) => (a.row !== b.row ? a.row - b.row : a.col - b.col))[0];
 }
 
+type MergePair = { target: Position; source: Position };
+
+// Resolve aligned runs before ordinary pairs. A run is still made from pair
+// merges: three 8s become a 16 plus an 8, rather than one three-way merge.
+// Scan rows first, then columns, so intersecting runs resolve deterministically.
+function findAlignedRunPair(board: Board): MergePair | null {
+  for (let row = 0; row < ROWS; row += 1) {
+    for (let col = 0; col < COLS;) {
+      const value = board[row][col];
+      if (value === null) { col += 1; continue; }
+      let end = col + 1;
+      while (end < COLS && board[row][end] === value) end += 1;
+      if (end - col >= 3) {
+        // Keep the first pair's result at its right tile. This preserves a
+        // contiguous suffix, allowing longer runs to resolve/cascade cleanly.
+        return { target: { row, col: col + 1 }, source: { row, col } };
+      }
+      col = end;
+    }
+  }
+
+  for (let col = 0; col < COLS; col += 1) {
+    for (let row = 0; row < ROWS;) {
+      const value = board[row][col];
+      if (value === null) { row += 1; continue; }
+      let end = row + 1;
+      while (end < ROWS && board[end][col] === value) end += 1;
+      if (end - row >= 3) {
+        return { target: { row: row + 1, col }, source: { row, col } };
+      }
+      row = end;
+    }
+  }
+  return null;
+}
+
 export function hasPossibleMerge(board: Board): boolean {
   for (let row = 0; row < ROWS; row += 1) {
     for (let col = 0; col < COLS; col += 1) {
@@ -109,7 +145,17 @@ export function resolveMerges(
 
   while (true) {
     let value = board[active.row]?.[active.col];
-    let match = value == null ? null : chooseMergeNeighbor(active, board, value);
+    const alignedRun = findAlignedRunPair(board);
+    let match: Position | null = null;
+
+    if (alignedRun) {
+      active = alignedRun.target;
+      match = alignedRun.source;
+      value = board[active.row]?.[active.col];
+    } else {
+      match = value == null ? null : chooseMergeNeighbor(active, board, value);
+    }
+
     if (!match) {
       let found = false;
       for (let row = 0; row < ROWS && !found; row += 1) {

@@ -4,7 +4,9 @@ import { createId } from './createId';
 
 export type AdRequest = { version: 1; type: 'rewarded.request'; requestId: string; placement: 'milestone_double' | 'booster_refill' | 'daily_double'; createdAt: number; milestone?: number; booster?: BoosterType; dailyId?: string; dailyIndex?: number };
 export type AdResult = { requestId: string; status: 'earned' | 'cancelled' | 'failed' | 'unavailable' };
-type HostCapabilities = { version: 1; type: 'rewarded.capabilities'; enabled: boolean; bridgeToken: string; placements: string[] };
+export type AdBreakResult = { requestId: string; status: 'shown' | 'cooldown' | 'busy' | 'failed' | 'unavailable' };
+type AdBreakRequest = { version: 1; type: 'interstitial.break.request'; requestId: string; checkpointScore: number; createdAt: number };
+type HostCapabilities = { version: 1; type: 'rewarded.capabilities'; enabled: boolean; bridgeToken: string; placements: string[]; interstitialBreaks?: boolean };
 let capabilities: HostCapabilities | null = null;
 declare global {
   interface Window {
@@ -13,6 +15,7 @@ declare global {
   }
 }
 export const adsSupported = () => typeof window.GameHost?.postMessage === 'function' && capabilities?.enabled === true;
+export const interstitialBreaksSupported = () => typeof window.GameHost?.postMessage === 'function' && capabilities?.interstitialBreaks === true;
 export function subscribeAdAvailability(listener: () => void): () => void {
   window.addEventListener('number-merge-host-ready', listener);
   listener();
@@ -32,7 +35,18 @@ export function requestAd(placement: AdRequest['placement'], detail: { milestone
   return request;
 }
 
-export function listenForAdResult(onResult: (request: AdRequest, result: AdResult) => void, onWaitExpired: () => void): () => void {
+export function requestInterstitialBreak(checkpointScore: number): string | null {
+  if (!interstitialBreaksSupported() || !Number.isSafeInteger(checkpointScore) || checkpointScore < 1000) return null;
+  const current = storage.get<AdBreakRequest | null>('pending-ad-break', null);
+  if (current) return current.requestId;
+  const request: AdBreakRequest = { version: 1, type: 'interstitial.break.request', requestId: createId(), checkpointScore, createdAt: Date.now() };
+  storage.set('pending-ad-break', request);
+  try { window.GameHost!.postMessage(JSON.stringify({ ...request, bridgeToken: capabilities?.bridgeToken })); }
+  catch { storage.set('pending-ad-break', null); return null; }
+  return request.requestId;
+}
+
+export function listenForAdResult(onResult: (request: AdRequest, result: AdResult) => void, onWaitExpired: () => void, onAdBreakResult?: (result: AdBreakResult) => void): () => void {
   const receive = (value: unknown) => {
     if (!value || typeof value !== 'object') return;
     const candidate = value as Partial<HostCapabilities>;
@@ -40,6 +54,14 @@ export function listenForAdResult(onResult: (request: AdRequest, result: AdResul
       if (candidate.version !== 1 || typeof candidate.enabled !== 'boolean' || typeof candidate.bridgeToken !== 'string' || !candidate.bridgeToken || !Array.isArray(candidate.placements) || !candidate.placements.every(item => typeof item === 'string')) return;
       capabilities = candidate as HostCapabilities;
       window.dispatchEvent(new Event('number-merge-host-ready'));
+      return;
+    }
+    if (candidate.type === 'interstitial.break.result') {
+      const result = value as AdBreakResult & { type?: string; version?: number };
+      const pending = storage.get<AdBreakRequest | null>('pending-ad-break', null);
+      if (result.version !== 1 || !pending || pending.requestId !== result.requestId || !['shown', 'cooldown', 'busy', 'failed', 'unavailable'].includes(result.status)) return;
+      storage.set('pending-ad-break', null);
+      onAdBreakResult?.(result);
       return;
     }
     const result = value as AdResult;
@@ -63,16 +85,29 @@ export function listenForAdResult(onResult: (request: AdRequest, result: AdResul
   };
   window.NumberMergeHost = { receive };
   // The native host must replay any terminal result not yet acknowledged.
-  try { window.GameHost?.postMessage(JSON.stringify({ version: 1, type: 'rewarded.ready', pendingRequestId: pendingAd()?.requestId ?? null })); } catch { /* A later host reconnect can replay its result. */ }
+  const sendReady = () => {
+    try {
+      window.GameHost?.postMessage(JSON.stringify({
+        version: 1, type: 'rewarded.ready', pendingRequestId: pendingAd()?.requestId ?? null,
+        pendingBreakRequestId: storage.get<AdBreakRequest | null>('pending-ad-break', null)?.requestId ?? null,
+      }));
+    } catch { /* A later host reconnect can replay its result. */ }
+  };
+  sendReady();
   const timer = window.setInterval(() => {
     // Registering the Flutter channel or delivering capabilities can happen after React mounts.
     if (!capabilities && typeof window.GameHost?.postMessage === 'function') {
-      try { window.GameHost.postMessage(JSON.stringify({ version: 1, type: 'rewarded.ready', pendingRequestId: pendingAd()?.requestId ?? null })); } catch { /* Retry on the next tick. */ }
+      sendReady();
     }
     const pending = pendingAd();
     if (pending && Date.now() - pending.createdAt > 90000) {
       storage.set('pending-ad', null);
       onWaitExpired(); // Keep its receipt so a late earned result can still be delivered.
+    }
+    const pendingBreak = storage.get<AdBreakRequest | null>('pending-ad-break', null);
+    if (pendingBreak && Date.now() - pendingBreak.createdAt > 90000) {
+      storage.set('pending-ad-break', null);
+      onAdBreakResult?.({ requestId: pendingBreak.requestId, status: 'unavailable' });
     }
   }, 1000);
   return () => { window.clearInterval(timer); if (window.NumberMergeHost?.receive === receive) { delete window.NumberMergeHost; capabilities = null; } };

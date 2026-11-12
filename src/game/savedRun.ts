@@ -1,6 +1,7 @@
 import { COLS, ROWS } from './constants';
 import type { Board, MilestoneInfo } from './types';
 import { storage } from '../utils/storage';
+import { isScoreCheckpoint } from './adBreaks';
 
 export interface SavedRun {
   version: 1;
@@ -16,6 +17,9 @@ export interface SavedRun {
   milestoneInfo?: MilestoneInfo | null;
   runId?: string;
   moveNumber?: number;
+  lastAdBreakCheckpoint?: number;
+  queuedAdBreakCheckpoint?: number | null;
+  adBreakCheckpoint?: number | null;
 }
 
 const tile = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 2 && Number.isInteger(Math.log2(value));
@@ -29,6 +33,9 @@ export function loadRun(): SavedRun | null {
     || !Number.isInteger(run.selectedColumn) || run.selectedColumn < 0 || run.selectedColumn >= COLS
     || (run.runId !== undefined && typeof run.runId !== 'string')
     || (run.moveNumber !== undefined && (!Number.isSafeInteger(run.moveNumber) || run.moveNumber < 0))
+    || (run.lastAdBreakCheckpoint !== undefined && (!Number.isSafeInteger(run.lastAdBreakCheckpoint) || run.lastAdBreakCheckpoint < 0))
+    || (run.queuedAdBreakCheckpoint != null && !isScoreCheckpoint(run.queuedAdBreakCheckpoint))
+    || (run.adBreakCheckpoint != null && !isScoreCheckpoint(run.adBreakCheckpoint))
     || (run.rewardModal != null && run.rewardModal !== 'unlock' && run.rewardModal !== 'milestone')
     || (run.rewardModal != null && !tile(run.modalTile))
     || (run.milestoneInfo != null && (!tile(run.milestoneInfo.current) || !tile(run.milestoneInfo.next) || !tile(run.milestoneInfo.retired)))) return null;

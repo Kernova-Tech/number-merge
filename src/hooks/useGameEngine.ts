@@ -5,10 +5,11 @@ import { loadRun } from '../game/savedRun';
 import { getCurrentGoal, getMilestoneInfo, getRetiredValuesForHighest } from '../game/milestones';
 import { generateWeightedTile, getActiveTilePool } from '../game/tileGeneration';
 import { calculateMergeXp, calculateMilestoneXp, getLevelProgress, getTotalXpForLevel } from '../game/leveling';
+import { getCrossedScoreCheckpoint } from '../game/adBreaks';
 import type { Board, BoosterType, MergeAnimationState, MergeEvent, MilestoneInfo, ModalType, Position, ShotResult, TileValue } from '../game/types';
 import { storage } from '../utils/storage';
 import { createId } from '../utils/createId';
-import { adsSupported, listenForAdResult, pendingAd, requestAd, subscribeAdAvailability } from '../utils/rewardBridge';
+import { adsSupported, listenForAdResult, pendingAd, requestAd, requestInterstitialBreak, subscribeAdAvailability } from '../utils/rewardBridge';
 import { collectChallenge, collectDaily, creditReward, purchaseBoosters, readWallet, recordChallengeMove, syncWallet } from '../game/economy';
 import type { ChallengeId } from '../game/challenges';
 import { DAILY_GIFTS } from '../game/dailyRewards';
@@ -70,6 +71,9 @@ export interface GameEngine {
   closeMilestone: () => void;
   adBusy: boolean;
   adAvailable: boolean;
+  adBreakScore: number | null;
+  requestAdBreak: (score: number) => string | null;
+  finishAdBreak: () => void;
   watchForBooster: (type: BoosterType) => void;
   buyBooster: (type: BoosterType) => void;
   setBoosterOfferOpen: (open: boolean) => void;
@@ -90,6 +94,7 @@ export function useGameEngine(): GameEngine {
   const [initialRunId] = useState(() => initialRun?.runId ?? createId());
   const runId = useRef(initialRunId);
   const moveNumber = useRef(initialRun?.moveNumber ?? 0);
+  const lastAdBreakCheckpoint = useRef(initialRun?.lastAdBreakCheckpoint ?? 0);
   const [runActive, setRunActive] = useState(false);
   const [screen, setScreen] = useState<'home' | 'game'>('home');
   const [board, setBoard] = useState<Board>(createEmptyBoard);
@@ -113,6 +118,9 @@ export function useGameEngine(): GameEngine {
   const [modalTile, setModalTile] = useState<TileValue | null>(null);
   rewardTileRef.current = modalTile;
   const [milestoneInfo, setMilestoneInfo] = useState<MilestoneInfo | null>(null);
+  const [adBreakScore, setAdBreakScore] = useState<number | null>(null);
+  const [queuedAdBreakCheckpoint, setQueuedAdBreakCheckpoint] = useState<number | null>(() => initialRun?.queuedAdBreakCheckpoint ?? null);
+  const queuedAdBreakCheckpointRef = useRef<number | null>(initialRun?.queuedAdBreakCheckpoint ?? null);
   const [tutorialStep, setTutorialStep] = useState(0);
   const [hammerActive, setHammerActive] = useState(false);
   const [isShooting, setIsShooting] = useState(false);
@@ -138,6 +146,30 @@ export function useGameEngine(): GameEngine {
   const levelState = getLevelProgress(totalXp);
   const level = levelState.level;
 
+  queuedAdBreakCheckpointRef.current = queuedAdBreakCheckpoint;
+
+  const releaseQueuedAdBreak = useCallback(() => {
+    const checkpoint = queuedAdBreakCheckpointRef.current;
+    if (checkpoint === null) return false;
+    queuedAdBreakCheckpointRef.current = null;
+    setQueuedAdBreakCheckpoint(null);
+    setAdBreakScore(checkpoint);
+    setModal('ad-break');
+    return true;
+  }, []);
+
+  const queueOrShowAdBreak = useCallback((checkpoint: number | null, waitForReward = false) => {
+    if (checkpoint === null || checkpoint <= lastAdBreakCheckpoint.current) return;
+    lastAdBreakCheckpoint.current = checkpoint;
+    if (waitForReward) {
+      queuedAdBreakCheckpointRef.current = checkpoint;
+      setQueuedAdBreakCheckpoint(checkpoint);
+      return;
+    }
+    setAdBreakScore(checkpoint);
+    setModal('ad-break');
+  }, []);
+
   useEffect(() => storage.set('best-score', bestScore), [bestScore]);
   useEffect(() => storage.set('gems', gems), [gems]);
   useEffect(() => storage.set('highest-block', highestBlock), [highestBlock]);
@@ -157,8 +189,8 @@ export function useGameEngine(): GameEngine {
           storage.set('saved-run', savedRun.current);
         }
         if (rewardTileRef.current === request.milestone) {
-          setModal(current => current === 'unlock' || current === 'milestone' ? null : current);
           setMilestoneInfo(null);
+          if (!releaseQueuedAdBreak()) setModal(current => current === 'unlock' || current === 'milestone' ? null : current);
         }
       } else if (request.placement === 'booster_refill' && request.booster) {
         const wallet = creditReward(`ad:${request.requestId}`, 0, request.booster);
@@ -182,7 +214,10 @@ export function useGameEngine(): GameEngine {
     claimLock.current = false;
     setAdBusy(false);
     window.dispatchEvent(new CustomEvent('merge-toast', { detail: 'Collection is taking longer than expected. You can continue; an earned reward will still be delivered.' }));
-  }), []);
+  }, () => {
+    setAdBreakScore(null);
+    setModal(current => current === 'ad-break' ? null : current);
+  }), [releaseQueuedAdBreak]);
   useEffect(() => {
     if (!runActive || screen !== 'game' || tutorialStep > 0 || isShooting || isResolvingMerge || isPromotingNextTile) return;
     if (modal === 'game-over') {
@@ -191,10 +226,10 @@ export function useGameEngine(): GameEngine {
       return;
     }
     const rewardModal = modal === 'unlock' || modal === 'milestone' ? modal : null;
-    const run = { version: 1 as const, board: cloneBoard(board), score, currentTile, nextTile, selectedColumn, highestBlock, totalXp, rewardModal, modalTile, milestoneInfo, runId: runId.current, moveNumber: moveNumber.current };
+    const run = { version: 1 as const, board: cloneBoard(board), score, currentTile, nextTile, selectedColumn, highestBlock, totalXp, rewardModal, modalTile, milestoneInfo, runId: runId.current, moveNumber: moveNumber.current, lastAdBreakCheckpoint: lastAdBreakCheckpoint.current, queuedAdBreakCheckpoint, adBreakCheckpoint: modal === 'ad-break' ? adBreakScore : null };
     savedRun.current = run;
     storage.set('saved-run', run);
-  }, [runActive, screen, tutorialStep, isShooting, isResolvingMerge, isPromotingNextTile, modal, board, score, currentTile, nextTile, selectedColumn, highestBlock, totalXp, modalTile, milestoneInfo]);
+  }, [runActive, screen, tutorialStep, isShooting, isResolvingMerge, isPromotingNextTile, modal, board, score, currentTile, nextTile, selectedColumn, highestBlock, totalXp, modalTile, milestoneInfo, queuedAdBreakCheckpoint, adBreakScore]);
   useEffect(() => {
     if (modal === 'created-again') setModal(null);
   }, [modal]);
@@ -213,6 +248,8 @@ export function useGameEngine(): GameEngine {
   const setupNormalGame = useCallback((previousBoard?: Board, previousShooter?: TileValue) => {
     runId.current = createId();
     moveNumber.current = 0;
+    lastAdBreakCheckpoint.current = 0;
+    queuedAdBreakCheckpointRef.current = null;
     setRunActive(true);
     if (promotionTimer.current) window.clearTimeout(promotionTimer.current);
     if (pendingTutorialTimer.current) window.clearTimeout(pendingTutorialTimer.current);
@@ -228,6 +265,8 @@ export function useGameEngine(): GameEngine {
     setSelectedColumn(2);
     setTutorialStep(0);
     setModal(null);
+    setAdBreakScore(null);
+    setQueuedAdBreakCheckpoint(null);
     setHammerActive(false);
     setIsShooting(false);
     setIsPromotingNextTile(false);
@@ -247,8 +286,12 @@ export function useGameEngine(): GameEngine {
       setSelectedColumn(saved.selectedColumn);
       setHighestBlock(saved.highestBlock);
       setTotalXp(saved.totalXp);
+      lastAdBreakCheckpoint.current = saved.lastAdBreakCheckpoint ?? 0;
+      queuedAdBreakCheckpointRef.current = saved.queuedAdBreakCheckpoint ?? null;
+      setQueuedAdBreakCheckpoint(saved.queuedAdBreakCheckpoint ?? null);
+      setAdBreakScore(saved.adBreakCheckpoint ?? null);
       setTutorialStep(0);
-      setModal(saved.rewardModal ?? null);
+      setModal(saved.adBreakCheckpoint ? 'ad-break' : saved.rewardModal ?? null);
       setModalTile(saved.modalTile ?? null);
       setMilestoneInfo(saved.milestoneInfo ?? null);
       setRunActive(true);
@@ -358,6 +401,7 @@ export function useGameEngine(): GameEngine {
 
       const created = shotResult.merges.length ? Math.max(...shotResult.merges.map((merge) => merge.value)) : undefined;
       const isNewRecord = created !== undefined && created > highestBlock;
+      const scoreCheckpoint = getCrossedScoreCheckpoint(score, nextScore);
 
       // The next queue immediately adopts the pool unlocked by this shot.
       const nextHighest = isNewRecord ? (created as TileValue) : highestBlock;
@@ -398,6 +442,9 @@ export function useGameEngine(): GameEngine {
             setModal('unlock');
           }
           pendingPosition.current = shotResult.landing;
+          queueOrShowAdBreak(scoreCheckpoint, true);
+        } else {
+          queueOrShowAdBreak(scoreCheckpoint);
         }
       }, PROMOTION_DURATION);
     };
@@ -453,7 +500,7 @@ export function useGameEngine(): GameEngine {
         promoteAndFinish(result, nextScore);
       }
     }, flightDuration);
-  }, [board, currentTile, finishTutorial, hammerActive, highestBlock, isPromotingNextTile, isResolvingMerge, isShooting, modal, nextTile, retiredTiles, score, screen, selectedColumn, spawnTile, totalXp, tutorialStep]);
+  }, [board, currentTile, finishTutorial, hammerActive, highestBlock, isPromotingNextTile, isResolvingMerge, isShooting, modal, nextTile, queueOrShowAdBreak, retiredTiles, score, screen, selectedColumn, spawnTile, totalXp, tutorialStep]);
 
   const selectColumn = useCallback((column: number) => setSelectedColumn(Math.max(0, Math.min(COLS - 1, column))), []);
   const moveSelection = useCallback((delta: number) => {
@@ -464,6 +511,11 @@ export function useGameEngine(): GameEngine {
     if (!isShooting && !isPromotingNextTile && !isResolvingMerge && !modal) setModal('pause');
   }, [isPromotingNextTile, isResolvingMerge, isShooting, modal]);
   const resume = useCallback(() => setModal(null), []);
+  const requestAdBreak = useCallback((checkpointScore: number) => requestInterstitialBreak(checkpointScore), []);
+  const finishAdBreak = useCallback(() => {
+    setAdBreakScore(null);
+    setModal(current => current === 'ad-break' ? null : current);
+  }, []);
 
   const useBooster = useCallback((type: BoosterType) => {
     if (pendingAd() || modal || isShooting || isPromotingNextTile || isResolvingMerge || tutorialStep > 0 || boosters[type] <= 0) return;
@@ -510,8 +562,10 @@ export function useGameEngine(): GameEngine {
     const challengeMerges = resolved.merges;
     if (challengeMerges.length) recordChallengeMove(`${runId.current}:${++moveNumber.current}`, challengeMerges, Date.now(), false);
     setBoard(resolved.board);
-    setScore((value) => value + resolved.scoreGained);
-    setBestScore((value) => Math.max(value, score + resolved.scoreGained));
+    const nextScore = score + resolved.scoreGained;
+    const scoreCheckpoint = getCrossedScoreCheckpoint(score, nextScore);
+    setScore(nextScore);
+    setBestScore((value) => Math.max(value, nextScore));
     const created = Math.max(highestBlock, ...resolved.merges.map((merge) => merge.value));
     setTotalXp((value) => value + calculateMergeXp(resolved.merges) + calculateMilestoneXp(highestBlock, created));
     if (created > highestBlock) {
@@ -521,14 +575,17 @@ export function useGameEngine(): GameEngine {
       const milestone = getMilestoneInfo(created);
       setMilestoneInfo(milestone);
       setModal(milestone ? 'milestone' : 'unlock');
+      queueOrShowAdBreak(scoreCheckpoint, true);
       const pool = getActiveTilePool(created);
       const safeCurrent = pool.includes(currentTile) ? currentTile : spawnTile(created);
       setCurrentTile(safeCurrent);
       setNextTile(pool.includes(nextTile) ? nextTile : spawnTile(created, [safeCurrent]));
+    } else {
+      queueOrShowAdBreak(scoreCheckpoint);
     }
     setBoosters((counts) => ({ ...counts, hammer: counts.hammer - 1 }));
     setHammerActive(false);
-  }, [board, currentTile, hammerActive, highestBlock, nextTile, score, totalXp, spawnTile]);
+  }, [board, currentTile, hammerActive, highestBlock, nextTile, queueOrShowAdBreak, score, totalXp, spawnTile]);
 
   const claimUnlock = useCallback((double: boolean) => {
     if (!modalTile || claimLock.current || pendingAd()) return;
@@ -547,9 +604,9 @@ export function useGameEngine(): GameEngine {
     const wallet = creditReward(`milestone:${modalTile}`, REWARD_VALUES[modalTile] ?? 10);
     setGems(wallet.gems);
     setMilestoneInfo(null);
-    setModal(null);
+    if (!releaseQueuedAdBreak()) setModal(null);
     queueMicrotask(() => { claimLock.current = false; });
-  }, [modalTile]);
+  }, [modalTile, releaseQueuedAdBreak]);
 
   const closeMilestone = useCallback(() => claimUnlock(false), [claimUnlock]);
 
@@ -640,6 +697,6 @@ export function useGameEngine(): GameEngine {
     shotTargetRow, shotDuration, mergeEvents, mergeAnimation, combo, currentGoal,
     startGame, goHome, restart, shoot, selectColumn, moveSelection, pause,
     resume, useBooster, hitWithHammer, skipTutorial, closeGoal, claimUnlock, closeMilestone, resolveCreatedAgain,
-    adBusy, adAvailable, watchForBooster, buyBooster, setBoosterOfferOpen, purchaseShopItem, collectDailyGift, collectChallengeReward,
+    adBusy, adAvailable, adBreakScore, requestAdBreak, finishAdBreak, watchForBooster, buyBooster, setBoosterOfferOpen, purchaseShopItem, collectDailyGift, collectChallengeReward,
   };
 }
