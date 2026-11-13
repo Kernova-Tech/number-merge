@@ -17,17 +17,23 @@ export interface Position {
   col: number;
 }
 
+export type MergeShape = 'pair' | 'line' | 'l' | 't' | 'plus' | 'square' | 'zigzag' | 'cluster';
+
 export interface MergeEvent extends Position {
   value: TileValue;
+  shape: MergeShape;
+  tileCount: number;
 }
 
 export interface MergeStep {
   boardBefore: Board;
   boardAfter: Board;
-  source: Position | null;
+  sources: Position[];
   target: Position;
   result: Position;
   value: TileValue;
+  shape: MergeShape;
+  tileCount: number;
 }
 
 export interface MergeAnimationState {

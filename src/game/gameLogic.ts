@@ -1,7 +1,7 @@
 import { COLS, ROWS } from './constants';
 import { getSpawnPool, getRetiredValuesForHighest } from './milestones';
 import { generateWeightedTile } from './tileGeneration';
-import type { Board, MergeEvent, MergeStep, Position, ShotResult, TileValue } from './types';
+import type { Board, MergeEvent, MergeShape, MergeStep, Position, ShotResult, TileValue } from './types';
 
 export const createEmptyBoard = (): Board =>
   Array.from({ length: ROWS }, () => Array.from({ length: COLS }, () => null));
@@ -58,8 +58,8 @@ export function removeRetiredTiles(board: Board, highest: number): Board {
   return compressColumns(board.map((row) => row.map((value) => value !== null && retired.includes(value) ? null : value)));
 }
 
-// Four cardinal directions only: up, down, left, right.
-// Deterministic order (top → bottom, left → right) for stable chain merge behavior.
+// Four cardinal directions only: up, down, left, right. Diagonal contact does
+// not join a group. Keeping this order stable makes every cascade reproducible.
 const NEIGHBOR_DIRS = [
   { row: -1, col: 0 },
   { row: 1, col: 0 },
@@ -67,51 +67,124 @@ const NEIGHBOR_DIRS = [
   { row: 0, col: 1 },
 ] as const;
 
-function chooseMergeNeighbor(active: Position, board: Board, value: TileValue): Position | null {
-  const candidates: Position[] = [];
-  for (const { row: dr, col: dc } of NEIGHBOR_DIRS) {
-    const r = active.row + dr;
-    const c = active.col + dc;
-    if (r >= 0 && r < ROWS && c >= 0 && c < COLS && board[r][c] === value) {
-      candidates.push({ row: r, col: c });
-    }
-  }
-  if (!candidates.length) return null;
-  // Deterministic: lowest row first, then lowest col.
-  return candidates.sort((a, b) => (a.row !== b.row ? a.row - b.row : a.col - b.col))[0];
+type MatchingGroup = { value: TileValue; cells: Position[]; incomingCount: number };
+
+function positionKey({ row, col }: Position): string {
+  return `${row}:${col}`;
 }
 
-type MergePair = { target: Position; source: Position };
+function sortPositions(positions: Position[]): Position[] {
+  return positions.sort((a, b) => a.row - b.row || a.col - b.col);
+}
 
-// Resolve aligned runs before ordinary pairs. A run is still made from pair
-// merges: three 8s become a 16 plus an 8, rather than one three-way merge.
-// Scan rows first, then columns, so intersecting runs resolve deterministically.
-function findAlignedRunPair(board: Board): MergePair | null {
-  for (let row = 0; row < ROWS; row += 1) {
-    for (let col = 0; col < COLS;) {
-      const value = board[row][col];
-      if (value === null) { col += 1; continue; }
-      let end = col + 1;
-      while (end < COLS && board[row][end] === value) end += 1;
-      if (end - col >= 3) {
-        // Keep the first pair's result at its right tile. This preserves a
-        // contiguous suffix, allowing longer runs to resolve/cascade cleanly.
-        return { target: { row, col: col + 1 }, source: { row, col } };
+function collectConnectedGroup(board: Board, start: Position, value: TileValue): Position[] {
+  if (board[start.row]?.[start.col] !== value) return [];
+  const queue = [{ ...start }];
+  const found = new Set([positionKey(start)]);
+  const cells: Position[] = [];
+
+  for (let index = 0; index < queue.length; index += 1) {
+    const cell = queue[index];
+    cells.push(cell);
+    for (const { row: dr, col: dc } of NEIGHBOR_DIRS) {
+      const neighbor = { row: cell.row + dr, col: cell.col + dc };
+      if (neighbor.row < 0 || neighbor.row >= ROWS || neighbor.col < 0 || neighbor.col >= COLS) continue;
+      const key = positionKey(neighbor);
+      if (!found.has(key) && board[neighbor.row][neighbor.col] === value) {
+        found.add(key);
+        queue.push(neighbor);
       }
-      col = end;
     }
   }
 
-  for (let col = 0; col < COLS; col += 1) {
-    for (let row = 0; row < ROWS;) {
+  return sortPositions(cells);
+}
+
+function canonicalShapeKey(positions: Position[]): string {
+  const transforms = [
+    (row: number, col: number) => [row, col],
+    (row: number, col: number) => [row, -col],
+    (row: number, col: number) => [-row, col],
+    (row: number, col: number) => [-row, -col],
+    (row: number, col: number) => [col, row],
+    (row: number, col: number) => [col, -row],
+    (row: number, col: number) => [-col, row],
+    (row: number, col: number) => [-col, -row],
+  ];
+
+  return transforms.map((transform) => {
+    const points = positions.map(({ row, col }) => transform(row, col));
+    const minRow = Math.min(...points.map(([row]) => row));
+    const minCol = Math.min(...points.map(([, col]) => col));
+    return points
+      .map(([row, col]) => `${row - minRow},${col - minCol}`)
+      .sort()
+      .join(';');
+  }).sort()[0];
+}
+
+const RECOGNIZED_SHAPES = new Map<string, Exclude<MergeShape, 'pair' | 'line' | 'cluster'>>([
+  [canonicalShapeKey([{ row: 0, col: 0 }, { row: 0, col: 1 }, { row: 1, col: 0 }]), 'l'],
+  [canonicalShapeKey([{ row: 0, col: 0 }, { row: 0, col: 1 }, { row: 0, col: 2 }, { row: 1, col: 2 }]), 'l'],
+  [canonicalShapeKey([{ row: 0, col: 0 }, { row: 0, col: 1 }, { row: 0, col: 2 }, { row: 1, col: 1 }]), 't'],
+  [canonicalShapeKey([{ row: 0, col: 1 }, { row: 1, col: 0 }, { row: 1, col: 1 }, { row: 1, col: 2 }, { row: 2, col: 1 }]), 'plus'],
+  [canonicalShapeKey([{ row: 0, col: 0 }, { row: 0, col: 1 }, { row: 1, col: 0 }, { row: 1, col: 1 }]), 'square'],
+  [canonicalShapeKey([{ row: 0, col: 1 }, { row: 0, col: 2 }, { row: 1, col: 0 }, { row: 1, col: 1 }]), 'zigzag'],
+]);
+
+export function classifyMergeShape(cells: Position[], tileCount = cells.length): MergeShape {
+  if (tileCount <= 2) return 'pair';
+  if (cells.length < 2) return 'cluster';
+  const sameRow = cells.every((cell) => cell.row === cells[0].row);
+  const sameColumn = cells.every((cell) => cell.col === cells[0].col);
+  if (sameRow || sameColumn) return 'line';
+  return RECOGNIZED_SHAPES.get(canonicalShapeKey(cells)) ?? 'cluster';
+}
+
+// A connected group is worth one doubling for its first tile, then one more
+// doubling for each additional tile: four 8s therefore calculate to 8 * 2^3.
+// Shape-specific calculators are explicit so pattern rules can evolve without
+// hard-coding a denomination or a result such as 64.
+type MergeCalculator = (value: TileValue, tileCount: number) => TileValue;
+const calculateByGroupSize: MergeCalculator = (value, tileCount) => value * (2 ** (tileCount - 1));
+const MERGE_CALCULATORS: Record<MergeShape, MergeCalculator> = {
+  pair: calculateByGroupSize,
+  line: calculateByGroupSize,
+  l: calculateByGroupSize,
+  t: calculateByGroupSize,
+  plus: calculateByGroupSize,
+  square: calculateByGroupSize,
+  zigzag: calculateByGroupSize,
+  cluster: calculateByGroupSize,
+};
+
+export function calculateGroupMergeValue(value: TileValue, tileCount: number, shape: MergeShape): TileValue {
+  if (!Number.isFinite(value) || value <= 0 || !Number.isInteger(tileCount) || tileCount < 2) return value;
+  return MERGE_CALCULATORS[shape](value, tileCount);
+}
+
+function findNextMatchingGroup(
+  board: Board,
+  preferred: Position,
+  incomingAtPreferred: number,
+): MatchingGroup | null {
+  const preferredValue = board[preferred.row]?.[preferred.col];
+  if (preferredValue !== null && preferredValue !== undefined) {
+    const preferredCells = collectConnectedGroup(board, preferred, preferredValue);
+    if (preferredCells.length + incomingAtPreferred >= 2) {
+      return { value: preferredValue, cells: preferredCells, incomingCount: incomingAtPreferred };
+    }
+  }
+
+  const visited = new Set<string>();
+  for (let row = 0; row < ROWS; row += 1) {
+    for (let col = 0; col < COLS; col += 1) {
       const value = board[row][col];
-      if (value === null) { row += 1; continue; }
-      let end = row + 1;
-      while (end < ROWS && board[end][col] === value) end += 1;
-      if (end - row >= 3) {
-        return { target: { row: row + 1, col }, source: { row, col } };
-      }
-      row = end;
+      const start = { row, col };
+      if (value === null || visited.has(positionKey(start))) continue;
+      const cells = collectConnectedGroup(board, start, value);
+      cells.forEach((cell) => visited.add(positionKey(cell)));
+      if (cells.length >= 2) return { value, cells, incomingCount: 0 };
     }
   }
   return null;
@@ -136,60 +209,49 @@ export function resolveMerges(
   source: Board,
   start: Position,
   highestBlock = 0,
+  incomingAtStart = 0,
 ): { board: Board; scoreGained: number; merges: MergeEvent[]; mergeSteps: MergeStep[]; active: Position } {
   let board = removeRetiredTiles(source, highestBlock);
   let active = { ...start };
+  let pendingIncoming = incomingAtStart;
   let scoreGained = 0;
   const merges: MergeEvent[] = [];
   const mergeSteps: MergeStep[] = [];
 
   while (true) {
-    let value = board[active.row]?.[active.col];
-    const alignedRun = findAlignedRunPair(board);
-    let match: Position | null = null;
-
-    if (alignedRun) {
-      active = alignedRun.target;
-      match = alignedRun.source;
-      value = board[active.row]?.[active.col];
-    } else {
-      match = value == null ? null : chooseMergeNeighbor(active, board, value);
-    }
-
-    if (!match) {
-      let found = false;
-      for (let row = 0; row < ROWS && !found; row += 1) {
-        for (let col = 0; col < COLS && !found; col += 1) {
-          const candidate = board[row][col];
-          const neighbor = candidate === null ? null : chooseMergeNeighbor({ row, col }, board, candidate);
-          if (neighbor) { active = { row, col }; value = candidate; match = neighbor; found = true; }
-        }
-      }
-      if (!found) break;
-    }
-    if (!match || value == null) break;
-
+    const group = findNextMatchingGroup(board, active, pendingIncoming);
+    if (!group) break;
+    const target = group.cells.some(({ row, col }) => row === active.row && col === active.col)
+      ? { ...active }
+      : { ...group.cells[0] };
+    const tileCount = group.cells.length + group.incomingCount;
+    const shape = classifyMergeShape(group.cells, tileCount);
+    const mergedValue = calculateGroupMergeValue(group.value, tileCount, shape);
     const boardBefore = cloneBoard(board);
-    const target = { ...active };
-    board[match.row][match.col] = null;
-    const doubled = value * 2;
-    highestBlock = Math.max(highestBlock, doubled);
-    board[active.row][active.col] = doubled;
-    scoreGained += doubled;
+    group.cells.forEach(({ row, col }) => { board[row][col] = null; });
+    board[target.row][target.col] = mergedValue;
+    highestBlock = Math.max(highestBlock, mergedValue);
+    scoreGained += mergedValue;
 
-    const activeRowAfterCompression = board
-      .slice(0, active.row)
-      .reduce((count, row) => count + (row[active.col] !== null && !getRetiredValuesForHighest(highestBlock).includes(row[active.col]!) ? 1 : 0), 0);
+    const retiredAtNewHighest = getRetiredValuesForHighest(highestBlock);
+    const activeRowAfterCompression = board.slice(0, target.row).reduce(
+      (count, row) => count + (row[target.col] !== null && !retiredAtNewHighest.includes(row[target.col]!) ? 1 : 0),
+      0,
+    );
     board = removeRetiredTiles(board, highestBlock);
-    active = { row: activeRowAfterCompression, col: active.col };
-    merges.push({ ...active, value: doubled });
+    active = { row: activeRowAfterCompression, col: target.col };
+    pendingIncoming = 0;
+    const sources = group.cells.filter(({ row, col }) => row !== target.row || col !== target.col);
+    merges.push({ ...active, value: mergedValue, shape, tileCount });
     mergeSteps.push({
       boardBefore,
       boardAfter: cloneBoard(board),
-      source: { ...match },
+      sources,
       target,
       result: { ...active },
-      value: doubled,
+      value: mergedValue,
+      shape,
+      tileCount,
     });
   }
 
@@ -210,30 +272,14 @@ export function placeTileInColumn(board: Board, column: number, tile: TileValue,
   }
 
   let landing: Position;
-  let collisionScore = 0;
-  let collisionMerge: MergeEvent[] = [];
-  let collisionStep: MergeStep[] = [];
   if (hitsMatch) {
-    const boardBefore = cloneBoard(next);
-    const doubled = tile * 2;
-    next[hitRow][column] = doubled;
     landing = { row: hitRow, col: column };
-    collisionScore = doubled;
-    collisionMerge = [{ ...landing, value: doubled }];
-    collisionStep = [{
-      boardBefore,
-      boardAfter: cloneBoard(next),
-      source: null,
-      target: { ...landing },
-      result: { ...landing },
-      value: doubled,
-    }];
   } else {
     next[height][column] = tile;
     landing = { row: height, col: column };
   }
 
-  const resolved = resolveMerges(next, landing, Math.max(highestBlock, ...collisionMerge.map((merge) => merge.value)));
+  const resolved = resolveMerges(next, landing, highestBlock, hitsMatch ? 1 : 0);
 
   // After all merges, check if the resulting board is truly stuck.
   const boardFull = resolved.board[ROWS - 1].every((cell) => cell !== null);
@@ -242,9 +288,9 @@ export function placeTileInColumn(board: Board, column: number, tile: TileValue,
   return {
     board: resolved.board,
     gameOver: stuck,
-    scoreGained: collisionScore + resolved.scoreGained,
-    merges: [...collisionMerge, ...resolved.merges],
-    mergeSteps: [...collisionStep, ...resolved.mergeSteps],
+    scoreGained: resolved.scoreGained,
+    merges: resolved.merges,
+    mergeSteps: resolved.mergeSteps,
     landing: resolved.active,
   };
 }

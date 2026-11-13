@@ -51,6 +51,7 @@ export function GameScreen({ game }: { game: GameEngine }) {
         hammerActive={game.hammerActive}
         isShooting={game.isShooting}
         shotTile={game.shotTile}
+        shotTargetColumn={game.shotTargetColumn}
         shotTargetRow={game.shotTargetRow}
         shotDuration={game.shotDuration}
         mergeEvents={game.mergeEvents}

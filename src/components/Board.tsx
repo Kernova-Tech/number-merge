@@ -9,6 +9,7 @@ interface BoardProps {
   hammerActive: boolean;
   isShooting: boolean;
   shotTile: TileValue | null;
+  shotTargetColumn: number;
   shotTargetRow: number;
   shotDuration: number;
   mergeEvents: MergeEvent[];
@@ -20,7 +21,7 @@ interface BoardProps {
 }
 
 export function Board({
-  board, selectedColumn, hammerActive, isShooting, shotTile, shotTargetRow, shotDuration, mergeEvents, mergeAnimation, combo, crownedValue,
+  board, selectedColumn, hammerActive, isShooting, shotTile, shotTargetColumn, shotTargetRow, shotDuration, mergeEvents, mergeAnimation, combo, crownedValue,
   onColumnClick, onHammerHit,
 }: BoardProps) {
   const { t } = useTranslation();
@@ -39,18 +40,28 @@ export function Board({
         {Array.from({ length: ROWS }, (_, row) =>
           Array.from({ length: COLS }, (_, col) => {
             const value = board[row][col];
-            const source = mergeAnimation?.phase === 'connecting' && mergeAnimation.step.source?.row === row && mergeAnimation.step.source.col === col;
+            const mergeStep = mergeAnimation?.step;
+            const sourceIndex = mergeAnimation?.phase === 'connecting'
+              ? mergeStep?.sources.findIndex((position) => position.row === row && position.col === col) ?? -1
+              : -1;
+            const source = sourceIndex >= 0;
             const target = mergeAnimation?.phase === 'connecting' && mergeAnimation.step.target.row === row && mergeAnimation.step.target.col === col;
             const popping = mergeAnimation?.phase === 'popping' && mergeAnimation.step.result.row === row && mergeAnimation.step.result.col === col;
-            const sourceStyle = source && mergeAnimation?.step.source ? {
-              '--merge-x': `${(mergeAnimation.step.target.col - mergeAnimation.step.source.col) * 115}%`,
-              '--merge-y': `${(mergeAnimation.step.target.row - mergeAnimation.step.source.row) * 105}%`,
-              '--merge-x-mid': `${(mergeAnimation.step.target.col - mergeAnimation.step.source.col) * 78}%`,
-              '--merge-y-mid': `${(mergeAnimation.step.target.row - mergeAnimation.step.source.row) * 71}%`,
+            const sourcePosition = source ? mergeStep?.sources[sourceIndex] : undefined;
+            const sourceStyle = source && sourcePosition && mergeStep ? {
+              '--merge-x': `${(mergeStep.target.col - sourcePosition.col) * 115}%`,
+              '--merge-y': `${(mergeStep.target.row - sourcePosition.row) * 105}%`,
+              '--merge-x-mid': `${(mergeStep.target.col - sourcePosition.col) * 78}%`,
+              '--merge-y-mid': `${(mergeStep.target.row - sourcePosition.row) * 71}%`,
+              '--merge-source-index': sourceIndex,
+              '--merge-spin': sourceIndex % 2 === 0 ? '12deg' : '-12deg',
+              '--merge-spin-reverse': sourceIndex % 2 === 0 ? '-12deg' : '12deg',
             } as React.CSSProperties : undefined;
+            const mergeShape = mergeAnimation?.step.shape;
+            const shapeClass = mergeShape ? `merge-pattern-${mergeShape}` : '';
             return (
               <div
-                className={`board-cell ${source ? 'merge-source-cell' : ''} ${target ? 'merge-target-cell' : ''} ${popping ? 'merge-pop-cell' : ''}`}
+                className={`board-cell ${source ? 'merge-source-cell' : ''} ${target ? 'merge-target-cell' : ''} ${popping ? 'merge-pop-cell' : ''} ${source || target || popping ? shapeClass : ''}`}
                 key={`${row}-${col}`}
                 style={sourceStyle}
                 onClick={(event) => {
@@ -67,17 +78,24 @@ export function Board({
         )}
       </div>
       {isShooting && shotTile && (
-        <div
-          className="shot-flight"
-          style={{
-            '--shot-column': selectedColumn,
-            '--shot-target': shotTargetRow,
-            '--shot-duration': `${shotDuration}ms`,
-          } as React.CSSProperties}
-        >
-          <span className="shot-light-core" aria-hidden="true" />
-          <Tile value={shotTile} />
-        </div>
+        <>
+          <span
+            className="shot-launch-flare"
+            style={{ '--shot-column': shotTargetColumn } as React.CSSProperties}
+            aria-hidden="true"
+          />
+          <div
+            className="shot-flight"
+            style={{
+              '--shot-column': shotTargetColumn,
+              '--shot-target': shotTargetRow,
+              '--shot-duration': `${shotDuration}ms`,
+            } as React.CSSProperties}
+          >
+            <span className="shot-light-core" aria-hidden="true" />
+            <Tile value={shotTile} />
+          </div>
+        </>
       )}
       {latestMerge && (
         <div

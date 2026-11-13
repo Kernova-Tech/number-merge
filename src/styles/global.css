@@ -157,9 +157,11 @@ button:disabled { cursor: default; opacity: .45; }
 .hammer-mode .board-grid { pointer-events: auto; }.hammer-mode .board-cell { cursor: crosshair; }.hammer-mode .board-cell > .tile { animation: hammer-target .65s ease-in-out infinite alternate; }
 .hammer-hint { position: absolute; z-index: 8; left: 50%; bottom: 10px; padding: 7px 12px; border-radius: 99px; background: #e9a52c; color: #16120b; transform: translateX(-50%); font-size: 10px; font-weight: 900; white-space: nowrap; box-shadow: 0 5px 18px #0009; }
 .merge-burst { position: absolute; width: 46px; height: 46px; border: 3px solid #fff; border-radius: 50%; animation: burst .45s ease-out forwards; }
-.shot-flight { position: absolute; z-index: 3; left: calc((var(--shot-column) * 20%) + 10%); top: calc((var(--shot-target) + .5) * 12.5%); transform: translate(-50%, -50%); will-change: top, left, filter; animation: shoot-up var(--shot-duration) cubic-bezier(.12, .72, .2, 1) forwards; }
+.shot-flight { position: absolute; z-index: 3; left: calc((var(--shot-column) * 20%) + 10%); top: 100%; transform: translate(-50%, -50%); will-change: top, transform, opacity, filter; animation: shoot-up var(--shot-duration) cubic-bezier(.12, .72, .2, 1) forwards; }
 .shot-flight .tile { width: min(62px, 15vw); animation: shot-squash var(--shot-duration) cubic-bezier(.12, .72, .2, 1) forwards; }
 .shot-flight::before { content: ""; position: absolute; z-index: -1; left: 50%; top: 55%; width: 10px; height: 210px; background: linear-gradient(0deg, #4ee88d99, transparent); transform: translateX(-50%); transform-origin: top; filter: blur(7px); animation: beam-fade var(--shot-duration) ease-out forwards; }
+.shot-launch-flare { position: absolute; z-index: 2; left: calc((var(--shot-column) * 20%) + 10%); bottom: 0; width: 20%; height: 48px; transform: translateX(-50%); background: radial-gradient(ellipse at 50% 100%, #80ffc999 0, #42f58a56 20%, #38e9871c 48%, transparent 76%); pointer-events: none; animation: lane-launch-flash .24s ease-out both; }
+.shot-launch-flare::after { position: absolute; bottom: 0; left: 50%; width: 2px; height: 100%; border-radius: 99px; background: linear-gradient(to top, #d4ffe9, #78ffc57a 32%, transparent); box-shadow: 0 0 12px #5effa4a6; content: ""; transform: translateX(-50%); transform-origin: bottom; animation: lane-launch-beam .24s ease-out both; }
 .floating-score { position: absolute; z-index: 7; top: calc((var(--float-row) + .3) * 12.5%); left: calc((var(--float-column) + .5) * 20%); color: #fff; transform: translateX(-50%); font-size: 16px; font-weight: 1000; text-shadow: 0 2px 7px #000; animation: float-score .85s ease-out forwards; }
 .combo-pop { position: absolute; z-index: 7; left: 50%; top: 46%; color: #fff; transform: translate(-50%, -50%); font-size: 16px; font-weight: 1000; letter-spacing: 2px; text-shadow: 0 3px 8px #000; animation: combo .8s ease-out forwards; }.combo-pop b { color: #ffe052; font-size: 27px; }
 .shooter-rail { position: relative; flex: 0 0 70px; margin: 0 10px; border-top: 1px solid #ffffff0a; touch-action: none; container-type: inline-size; }
@@ -210,7 +212,15 @@ button:disabled { cursor: default; opacity: .45; }
 @keyframes merge-pulse { 0% { transform: scale(.82) } 42% { transform: scale(1.16); filter: brightness(1.4) } 72% { transform: scale(.96); filter: brightness(1.1) } 100% { transform: scale(1); filter: brightness(1) } }
 @keyframes burst { from { opacity: .9; transform: scale(.3) } to { opacity: 0; transform: scale(2.2) } }
 @keyframes orbit { to { transform: rotate(360deg) } }
-@keyframes shoot-up { 0% { left: 50%; top: 108%; filter: brightness(.9) } 72% { filter: brightness(1.04) } 90% { top: calc((var(--shot-target) + .44) * 12.5%); filter: brightness(1.18) } 100% { left: calc((var(--shot-column) * 20%) + 10%); top: calc((var(--shot-target) + .5) * 12.5%); filter: brightness(1) } }
+@keyframes shoot-up {
+  0% { top: calc(100% + 32px); transform: translate(-50%, -50%) scale(.72, .84); opacity: 0; filter: brightness(.9); }
+  9% { top: calc(100% - 7px); transform: translate(-50%, -50%) scale(.84, 1.12); opacity: 1; filter: brightness(1.25); }
+  22% { top: 84%; transform: translate(-50%, -50%) scale(.95, 1.08); filter: brightness(1.3); }
+  92% { top: calc((var(--shot-target) + .58) * 12.5%); transform: translate(-50%, -50%) scale(1.02, .98); filter: brightness(1.15); }
+  100% { top: calc((var(--shot-target) + .5) * 12.5%); transform: translate(-50%, -50%) scale(1); opacity: 1; filter: brightness(1); }
+}
+@keyframes lane-launch-flash { 0% { opacity: 0; transform: translateX(-50%) scale(.68, .5); } 18% { opacity: 1; } 100% { opacity: 0; transform: translateX(-50%) scale(1.15, 1); } }
+@keyframes lane-launch-beam { 0% { opacity: 0; transform: translateX(-50%) scaleY(.22); } 24% { opacity: .9; } 100% { opacity: 0; transform: translateX(-50%) scaleY(1); } }
 @keyframes shot-squash { 0% { transform: scale(.9, 1.12) } 72% { transform: scale(.96, 1.05) } 90% { transform: scale(1.08, .92) } 100% { transform: scale(1) } }
 @keyframes beam-fade { 0% { opacity: 0; transform: translateX(-50%) scaleY(.35) } 18% { opacity: .75 } 100% { opacity: 0; transform: translateX(-50%) scaleY(1.1) } }
 @keyframes lane-breathe { to { box-shadow: inset 0 0 26px #2de57b2c; } }
@@ -417,12 +427,67 @@ button:disabled { cursor: default; opacity: .45; }
   .game-screen .board, .game-screen .shooter-rail { margin-inline: 5px; }.game-screen .booster-bar { gap: 4px; padding-inline: 5px; }.game-screen .booster-bar button { gap: 4px; }.game-screen .booster-copy strong { font-size: 7px; }
 }
 
-/* ─── 8-direction merge: diagonal source slides along both axes ─────────── */
+/* Group merge: each connected source converges along its own board-space path. */
 .game-screen .merge-source-tile {
   z-index: 12;
   will-change: transform, opacity, filter;
   animation: obvious-merge-pull 240ms cubic-bezier(.2, .88, .22, 1) forwards !important;
 }
+
+.game-screen .merge-pattern-line.merge-source-cell .merge-source-tile { animation-name: merge-pull-line !important; }
+.game-screen .merge-pattern-l.merge-source-cell .merge-source-tile { animation-name: merge-pull-l !important; }
+.game-screen .merge-pattern-t.merge-source-cell .merge-source-tile { animation-name: merge-pull-t !important; }
+.game-screen .merge-pattern-plus.merge-source-cell .merge-source-tile { animation-name: merge-pull-plus !important; }
+.game-screen .merge-pattern-square.merge-source-cell .merge-source-tile { animation-name: merge-pull-square !important; }
+.game-screen .merge-pattern-zigzag.merge-source-cell .merge-source-tile { animation-name: merge-pull-zigzag !important; }
+.game-screen .merge-pattern-line.merge-pop-cell .merge-pop-tile { animation-name: merge-pop-line !important; }
+.game-screen .merge-pattern-l.merge-pop-cell .merge-pop-tile { animation-name: merge-pop-l !important; }
+.game-screen .merge-pattern-t.merge-pop-cell .merge-pop-tile { animation-name: merge-pop-t !important; }
+.game-screen .merge-pattern-plus.merge-pop-cell .merge-pop-tile { animation-name: merge-pop-plus !important; }
+.game-screen .merge-pattern-square.merge-pop-cell .merge-pop-tile { animation-name: merge-pop-square !important; }
+.game-screen .merge-pattern-zigzag.merge-pop-cell .merge-pop-tile { animation-name: merge-pop-zigzag !important; }
+.game-screen .merge-pattern-plus .obvious-merge-burst { border-width: 3px; box-shadow: 0 0 22px #50ffbecc, inset 0 0 20px #28d8ff80; }
+.game-screen .merge-pattern-t .obvious-merge-burst { border-radius: 38%; }
+.game-screen .merge-pattern-square .obvious-merge-burst { border-radius: 8px; transform: rotate(45deg); }
+
+@keyframes merge-pull-line {
+  0% { opacity: 1; transform: translate(0, 0) scale(1); filter: brightness(1); }
+  50% { opacity: 1; transform: translate(var(--merge-x-mid), var(--merge-y-mid)) scale(1.12, .92); filter: brightness(1.45); }
+  100% { opacity: 0; transform: translate(var(--merge-x), var(--merge-y)) scale(.58); filter: brightness(1.7); }
+}
+@keyframes merge-pull-l {
+  0% { opacity: 1; transform: translate(0, 0) rotate(0) scale(1); }
+  42% { opacity: 1; transform: translate(var(--merge-x-mid), var(--merge-y-mid)) rotate(var(--merge-spin)) scale(1.12); filter: brightness(1.4); }
+  100% { opacity: 0; transform: translate(var(--merge-x), var(--merge-y)) rotate(0) scale(.6); filter: brightness(1.7); }
+}
+@keyframes merge-pull-t {
+  0% { opacity: 1; transform: translate(0, 0) scale(1); }
+  36% { opacity: 1; transform: translate(var(--merge-x-mid), var(--merge-y-mid)) scale(1.18); filter: brightness(1.55); }
+  72% { opacity: .8; transform: translate(var(--merge-x), var(--merge-y)) scale(.8); }
+  100% { opacity: 0; transform: translate(var(--merge-x), var(--merge-y)) scale(.5); filter: brightness(1.8); }
+}
+@keyframes merge-pull-plus {
+  0% { opacity: 1; transform: translate(0, 0) scale(.92); filter: brightness(1); }
+  44% { opacity: 1; transform: translate(var(--merge-x-mid), var(--merge-y-mid)) rotate(var(--merge-spin)) scale(1.24); filter: brightness(1.8) saturate(1.35); }
+  100% { opacity: 0; transform: translate(var(--merge-x), var(--merge-y)) rotate(0) scale(.52); filter: brightness(2); }
+}
+@keyframes merge-pull-square {
+  0% { opacity: 1; transform: translate(0, 0) rotate(0) scale(1); }
+  45% { opacity: 1; transform: translate(var(--merge-x-mid), var(--merge-y-mid)) rotate(var(--merge-spin)) scale(.78, 1.16); filter: brightness(1.5); }
+  100% { opacity: 0; transform: translate(var(--merge-x), var(--merge-y)) rotate(0) scale(.56); filter: brightness(1.8); }
+}
+@keyframes merge-pull-zigzag {
+  0% { opacity: 1; transform: translate(0, 0) skewX(0) scale(1); }
+  38% { opacity: 1; transform: translate(var(--merge-x-mid), var(--merge-y-mid)) skewX(var(--merge-spin)) scale(1.12); filter: brightness(1.5); }
+  70% { opacity: .9; transform: translate(var(--merge-x), var(--merge-y)) skewX(var(--merge-spin-reverse)) scale(.82); }
+  100% { opacity: 0; transform: translate(var(--merge-x), var(--merge-y)) skewX(0) scale(.58); filter: brightness(1.8); }
+}
+@keyframes merge-pop-line { 0% { transform: scale(.76, .9); filter: brightness(1.7); } 60% { transform: scale(1.22, .92); } 100% { transform: scale(1); filter: brightness(1); } }
+@keyframes merge-pop-l { 0% { transform: rotate(-8deg) scale(.74); filter: brightness(1.8); } 65% { transform: rotate(4deg) scale(1.2); } 100% { transform: rotate(0) scale(1); filter: brightness(1); } }
+@keyframes merge-pop-t { 0% { transform: scale(.7); filter: brightness(2); } 45% { transform: scale(1.26); } 72% { transform: scale(.94); } 100% { transform: scale(1); filter: brightness(1); } }
+@keyframes merge-pop-plus { 0% { transform: rotate(-12deg) scale(.68); filter: brightness(2); } 55% { transform: rotate(7deg) scale(1.28); box-shadow: 0 0 28px #50ffbe; } 100% { transform: rotate(0) scale(1); filter: brightness(1); } }
+@keyframes merge-pop-square { 0% { transform: rotate(-7deg) scale(.72); filter: brightness(1.9); } 58% { transform: rotate(4deg) scale(1.22); } 100% { transform: rotate(0) scale(1); filter: brightness(1); } }
+@keyframes merge-pop-zigzag { 0% { transform: skewX(-8deg) scale(.7); filter: brightness(1.9); } 60% { transform: skewX(5deg) scale(1.2); } 100% { transform: skewX(0) scale(1); filter: brightness(1); } }
 
 /* Cleaner merge-pop for newly upgraded tiles */
 .tile.merging {
@@ -430,7 +495,7 @@ button:disabled { cursor: default; opacity: .45; }
   animation: obvious-merged-pop 220ms cubic-bezier(.18, 1.45, .32, 1) forwards !important;
 }
 
-/* Burst ring visible for diagonal merges too — ensure z-index clears the board grid */
+/* Keep the merge burst above every cell in the board grid. */
 .game-screen .obvious-merge-burst {
   z-index: 14;
   position: absolute;
