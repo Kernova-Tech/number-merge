@@ -29,6 +29,7 @@ export interface MergeStep {
   boardBefore: Board;
   boardAfter: Board;
   sources: Position[];
+  incomingSource?: Position;
   target: Position;
   result: Position;
   value: TileValue;

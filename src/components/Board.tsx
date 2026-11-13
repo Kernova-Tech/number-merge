@@ -26,6 +26,9 @@ export function Board({
 }: BoardProps) {
   const { t } = useTranslation();
   const latestMerge = mergeEvents.at(-1);
+  const mergingIncomingShot = mergeAnimation?.phase === 'connecting'
+    ? mergeAnimation.step.incomingSource
+    : undefined;
   return (
     <div className={`board ${hammerActive ? 'hammer-mode' : ''}`}>
       {Array.from({ length: COLS }, (_, col) => (
@@ -85,10 +88,11 @@ export function Board({
             aria-hidden="true"
           />
           <div
-            className="shot-flight"
+            className={`shot-flight${mergingIncomingShot ? ' shot-merging' : ''}`}
             style={{
               '--shot-column': shotTargetColumn,
               '--shot-target': shotTargetRow,
+              ...(mergingIncomingShot && mergeAnimation ? { '--shot-merge-target': mergeAnimation.step.target.row } : {}),
               '--shot-duration': `${shotDuration}ms`,
             } as React.CSSProperties}
           >

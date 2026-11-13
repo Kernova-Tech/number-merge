@@ -67,7 +67,19 @@ const NEIGHBOR_DIRS = [
   { row: 0, col: 1 },
 ] as const;
 
-type MatchingGroup = { value: TileValue; cells: Position[]; incomingCount: number };
+type MatchingGroup = {
+  value: TileValue;
+  cells: Position[];
+  positions: Position[];
+  incomingSource?: Position;
+};
+
+export interface MergeResolutionOptions {
+  /** Include an arriving shot at its physical impact cell, even if it is just outside a full board. */
+  incomingPosition?: Position;
+  /** Used only for board-wide settling operations such as initial setup and the hammer booster. */
+  scanWholeBoard?: boolean;
+}
 
 function positionKey({ row, col }: Position): string {
   return `${row}:${col}`;
@@ -77,8 +89,15 @@ function sortPositions(positions: Position[]): Position[] {
   return positions.sort((a, b) => a.row - b.row || a.col - b.col);
 }
 
-function collectConnectedGroup(board: Board, start: Position, value: TileValue): Position[] {
-  if (board[start.row]?.[start.col] !== value) return [];
+function collectConnectedGroup(board: Board, start: Position, value: TileValue, incomingPosition?: Position): Position[] {
+  const incomingKey = incomingPosition ? positionKey(incomingPosition) : null;
+  const isMatchingPosition = (position: Position) => {
+    if (incomingKey === positionKey(position)) return true;
+    return position.row >= 0 && position.row < ROWS
+      && position.col >= 0 && position.col < COLS
+      && board[position.row][position.col] === value;
+  };
+  if (!isMatchingPosition(start)) return [];
   const queue = [{ ...start }];
   const found = new Set([positionKey(start)]);
   const cells: Position[] = [];
@@ -90,9 +109,20 @@ function collectConnectedGroup(board: Board, start: Position, value: TileValue):
       const neighbor = { row: cell.row + dr, col: cell.col + dc };
       if (neighbor.row < 0 || neighbor.row >= ROWS || neighbor.col < 0 || neighbor.col >= COLS) continue;
       const key = positionKey(neighbor);
-      if (!found.has(key) && board[neighbor.row][neighbor.col] === value) {
+      if (!found.has(key) && (key === incomingKey || board[neighbor.row][neighbor.col] === value)) {
         found.add(key);
         queue.push(neighbor);
+      }
+    }
+
+    if (incomingPosition) {
+      for (const { row: dr, col: dc } of NEIGHBOR_DIRS) {
+        const neighbor = { row: cell.row + dr, col: cell.col + dc };
+        const key = positionKey(neighbor);
+        if (key === incomingKey && !found.has(key)) {
+          found.add(key);
+          queue.push(neighbor);
+        }
       }
     }
   }
@@ -166,15 +196,24 @@ export function calculateGroupMergeValue(value: TileValue, tileCount: number, sh
 function findNextMatchingGroup(
   board: Board,
   preferred: Position,
-  incomingAtPreferred: number,
+  incomingPosition: Position | undefined,
+  scanWholeBoard: boolean,
 ): MatchingGroup | null {
   const preferredValue = board[preferred.row]?.[preferred.col];
   if (preferredValue !== null && preferredValue !== undefined) {
-    const preferredCells = collectConnectedGroup(board, preferred, preferredValue);
-    if (preferredCells.length + incomingAtPreferred >= 2) {
-      return { value: preferredValue, cells: preferredCells, incomingCount: incomingAtPreferred };
+    const positions = collectConnectedGroup(board, preferred, preferredValue, incomingPosition);
+    if (positions.length >= 2) {
+      const incomingKey = incomingPosition ? positionKey(incomingPosition) : null;
+      return {
+        value: preferredValue,
+        positions,
+        cells: positions.filter((position) => positionKey(position) !== incomingKey),
+        incomingSource: incomingPosition,
+      };
     }
   }
+
+  if (!scanWholeBoard) return null;
 
   const visited = new Set<string>();
   for (let row = 0; row < ROWS; row += 1) {
@@ -184,7 +223,7 @@ function findNextMatchingGroup(
       if (value === null || visited.has(positionKey(start))) continue;
       const cells = collectConnectedGroup(board, start, value);
       cells.forEach((cell) => visited.add(positionKey(cell)));
-      if (cells.length >= 2) return { value, cells, incomingCount: 0 };
+      if (cells.length >= 2) return { value, cells, positions: cells };
     }
   }
   return null;
@@ -209,23 +248,23 @@ export function resolveMerges(
   source: Board,
   start: Position,
   highestBlock = 0,
-  incomingAtStart = 0,
+  options: MergeResolutionOptions = {},
 ): { board: Board; scoreGained: number; merges: MergeEvent[]; mergeSteps: MergeStep[]; active: Position } {
   let board = removeRetiredTiles(source, highestBlock);
   let active = { ...start };
-  let pendingIncoming = incomingAtStart;
+  let pendingIncomingPosition = options.incomingPosition;
   let scoreGained = 0;
   const merges: MergeEvent[] = [];
   const mergeSteps: MergeStep[] = [];
 
   while (true) {
-    const group = findNextMatchingGroup(board, active, pendingIncoming);
+    const group = findNextMatchingGroup(board, active, pendingIncomingPosition, options.scanWholeBoard ?? false);
     if (!group) break;
     const target = group.cells.some(({ row, col }) => row === active.row && col === active.col)
       ? { ...active }
       : { ...group.cells[0] };
-    const tileCount = group.cells.length + group.incomingCount;
-    const shape = classifyMergeShape(group.cells, tileCount);
+    const tileCount = group.positions.length;
+    const shape = classifyMergeShape(group.positions, tileCount);
     const mergedValue = calculateGroupMergeValue(group.value, tileCount, shape);
     const boardBefore = cloneBoard(board);
     group.cells.forEach(({ row, col }) => { board[row][col] = null; });
@@ -240,13 +279,14 @@ export function resolveMerges(
     );
     board = removeRetiredTiles(board, highestBlock);
     active = { row: activeRowAfterCompression, col: target.col };
-    pendingIncoming = 0;
+    pendingIncomingPosition = undefined;
     const sources = group.cells.filter(({ row, col }) => row !== target.row || col !== target.col);
     merges.push({ ...active, value: mergedValue, shape, tileCount });
     mergeSteps.push({
       boardBefore,
       boardAfter: cloneBoard(board),
       sources,
+      incomingSource: group.incomingSource,
       target,
       result: { ...active },
       value: mergedValue,
@@ -272,14 +312,18 @@ export function placeTileInColumn(board: Board, column: number, tile: TileValue,
   }
 
   let landing: Position;
+  let incomingPosition: Position | undefined;
   if (hitsMatch) {
     landing = { row: hitRow, col: column };
+    // The shot contacts the matching stack tile, then occupies the next cell
+    // below it. Keep that cell virtual so shape detection sees its real position.
+    incomingPosition = { row: height, col: column };
   } else {
     next[height][column] = tile;
     landing = { row: height, col: column };
   }
 
-  const resolved = resolveMerges(next, landing, highestBlock, hitsMatch ? 1 : 0);
+  const resolved = resolveMerges(next, landing, highestBlock, { incomingPosition });
 
   // After all merges, check if the resulting board is truly stuck.
   const boardFull = resolved.board[ROWS - 1].every((cell) => cell !== null);

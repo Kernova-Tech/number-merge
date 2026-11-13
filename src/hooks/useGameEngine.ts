@@ -353,7 +353,7 @@ export function useGameEngine(): GameEngine {
     if (mergeTimer.current) window.clearTimeout(mergeTimer.current);
     const retired = getRetiredValuesForHighest(highest);
     const initialBoard = previousBoard ? createDistinctInitialBoard(previousBoard, retired) : createInitialBoard(retired);
-    const readyBoard = resolveMerges(initialBoard, { row: 0, col: 0 }, highest).board;
+    const readyBoard = resolveMerges(initialBoard, { row: 0, col: 0 }, highest, { scanWholeBoard: true }).board;
     setBoard(readyBoard);
     replaceRunStats({ shots: 0, highestTile: Math.max(INITIAL_HIGHEST, ...readyBoard.flat().filter((value): value is TileValue => value !== null)), longestCascade: 0 });
     setScore(0);
@@ -446,7 +446,7 @@ export function useGameEngine(): GameEngine {
     setChallengeBestScore(readChallengeRunRecord(id).bestScore);
     setScreen('game');
     setRunActive(true);
-    const openingBoard = resolveMerges(createInitialBoard(), { row: 0, col: 0 }, INITIAL_HIGHEST).board;
+    const openingBoard = resolveMerges(createInitialBoard(), { row: 0, col: 0 }, INITIAL_HIGHEST, { scanWholeBoard: true }).board;
     setBoard(openingBoard);
     setScore(0);
     setHighestBlock(INITIAL_HIGHEST);
@@ -586,8 +586,8 @@ export function useGameEngine(): GameEngine {
     const before: Snapshot = { board: cloneBoard(board), score, currentTile, nextTile, highestBlock, totalXp };
     let columnHeight = 0;
     while (columnHeight < ROWS && board[columnHeight][column] !== null) columnHeight += 1;
-    const matchingHit = columnHeight > 0 && board[columnHeight - 1][column] === tile;
-    const targetRow = matchingHit ? columnHeight - 1 : Math.min(columnHeight, ROWS - 1);
+    // The shot occupies the next cell below a matching collision as well.
+    const targetRow = Math.min(columnHeight, ROWS - 1);
     const flightDuration = 250 + (ROWS - 1 - targetRow) * 18;
     const result = shootTile(board, column, tile, highestBlock);
     const shotStats = tutorialStep === 0
@@ -844,7 +844,7 @@ export function useGameEngine(): GameEngine {
       for (let r = 0; r < ROWS; r += 1) next[r][column] = values[r] ?? null;
     }
     historyRef.current = [...historyRef.current.slice(-9), { board: cloneBoard(board), score, currentTile, nextTile, highestBlock, totalXp }];
-    const resolved = resolveMerges(next, { row: 0, col: 0 }, highestBlock);
+    const resolved = resolveMerges(next, { row: 0, col: 0 }, highestBlock, { scanWholeBoard: true });
     // Booster merges count toward tile and merge objectives, not a shot chain.
     const challengeMerges = resolved.merges;
     if (challengeMerges.length) recordChallengeMove(`${runId.current}:${++moveNumber.current}`, challengeMerges, Date.now(), false);

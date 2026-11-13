@@ -158,6 +158,7 @@ button:disabled { cursor: default; opacity: .45; }
 .hammer-hint { position: absolute; z-index: 8; left: 50%; bottom: 10px; padding: 7px 12px; border-radius: 99px; background: #e9a52c; color: #16120b; transform: translateX(-50%); font-size: 10px; font-weight: 900; white-space: nowrap; box-shadow: 0 5px 18px #0009; }
 .merge-burst { position: absolute; width: 46px; height: 46px; border: 3px solid #fff; border-radius: 50%; animation: burst .45s ease-out forwards; }
 .shot-flight { position: absolute; z-index: 3; left: calc((var(--shot-column) * 20%) + 10%); top: 100%; transform: translate(-50%, -50%); will-change: top, transform, opacity, filter; animation: shoot-up var(--shot-duration) cubic-bezier(.12, .72, .2, 1) forwards; }
+.game-screen .shot-flight.shot-merging { animation: shot-merge-pull 240ms cubic-bezier(.2, .88, .22, 1) forwards; }
 .shot-flight .tile { width: min(62px, 15vw); animation: shot-squash var(--shot-duration) cubic-bezier(.12, .72, .2, 1) forwards; }
 .shot-flight::before { content: ""; position: absolute; z-index: -1; left: 50%; top: 55%; width: 10px; height: 210px; background: linear-gradient(0deg, #4ee88d99, transparent); transform: translateX(-50%); transform-origin: top; filter: blur(7px); animation: beam-fade var(--shot-duration) ease-out forwards; }
 .shot-launch-flare { position: absolute; z-index: 2; left: calc((var(--shot-column) * 20%) + 10%); bottom: 0; width: 20%; height: 48px; transform: translateX(-50%); background: radial-gradient(ellipse at 50% 100%, #80ffc999 0, #42f58a56 20%, #38e9871c 48%, transparent 76%); pointer-events: none; animation: lane-launch-flash .24s ease-out both; }
@@ -218,6 +219,10 @@ button:disabled { cursor: default; opacity: .45; }
   22% { top: 84%; transform: translate(-50%, -50%) scale(.95, 1.08); filter: brightness(1.3); }
   92% { top: calc((var(--shot-target) + .58) * 12.5%); transform: translate(-50%, -50%) scale(1.02, .98); filter: brightness(1.15); }
   100% { top: calc((var(--shot-target) + .5) * 12.5%); transform: translate(-50%, -50%) scale(1); opacity: 1; filter: brightness(1); }
+}
+@keyframes shot-merge-pull {
+  0% { top: calc((var(--shot-target) + .5) * 12.5%); transform: translate(-50%, -50%) scale(1); opacity: 1; filter: brightness(1.15); }
+  100% { top: calc((var(--shot-merge-target) + .5) * 12.5%); transform: translate(-50%, -50%) scale(.56); opacity: 0; filter: brightness(1.8); }
 }
 @keyframes lane-launch-flash { 0% { opacity: 0; transform: translateX(-50%) scale(.68, .5); } 18% { opacity: 1; } 100% { opacity: 0; transform: translateX(-50%) scale(1.15, 1); } }
 @keyframes lane-launch-beam { 0% { opacity: 0; transform: translateX(-50%) scaleY(.22); } 24% { opacity: .9; } 100% { opacity: 0; transform: translateX(-50%) scaleY(1); } }
