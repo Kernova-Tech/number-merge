@@ -1,6 +1,7 @@
 import { COLS, ROWS } from './constants';
 import type { Board, MilestoneInfo } from './types';
 import { storage } from '../utils/storage';
+import { isScoreCheckpoint } from './adBreaks';
 
 export interface SavedRun {
   version: 1;
@@ -11,11 +12,15 @@ export interface SavedRun {
   selectedColumn: number;
   highestBlock: number;
   totalXp: number;
+  runStats?: { shots: number; highestTile: number; longestCascade: number };
   rewardModal?: 'unlock' | 'milestone' | null;
   modalTile?: number | null;
   milestoneInfo?: MilestoneInfo | null;
   runId?: string;
   moveNumber?: number;
+  lastAdBreakCheckpoint?: number;
+  queuedAdBreakCheckpoint?: number | null;
+  adBreakCheckpoint?: number | null;
 }
 
 const tile = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 2 && Number.isInteger(Math.log2(value));
@@ -26,9 +31,15 @@ export function loadRun(): SavedRun | null {
     || !run.board.every((row) => Array.isArray(row) && row.length === COLS && row.every((cell) => cell === null || tile(cell)))
     || !tile(run.currentTile) || !tile(run.nextTile) || !tile(run.highestBlock)
     || !Number.isFinite(run.score) || run.score < 0 || !Number.isFinite(run.totalXp) || run.totalXp < 0
+    || (run.runStats !== undefined && (!run.runStats || typeof run.runStats !== 'object'
+      || !Number.isSafeInteger(run.runStats.shots) || run.runStats.shots < 0
+      || !tile(run.runStats.highestTile) || !Number.isSafeInteger(run.runStats.longestCascade) || run.runStats.longestCascade < 0))
     || !Number.isInteger(run.selectedColumn) || run.selectedColumn < 0 || run.selectedColumn >= COLS
     || (run.runId !== undefined && typeof run.runId !== 'string')
     || (run.moveNumber !== undefined && (!Number.isSafeInteger(run.moveNumber) || run.moveNumber < 0))
+    || (run.lastAdBreakCheckpoint !== undefined && (!Number.isSafeInteger(run.lastAdBreakCheckpoint) || run.lastAdBreakCheckpoint < 0))
+    || (run.queuedAdBreakCheckpoint != null && !isScoreCheckpoint(run.queuedAdBreakCheckpoint))
+    || (run.adBreakCheckpoint != null && !isScoreCheckpoint(run.adBreakCheckpoint))
     || (run.rewardModal != null && run.rewardModal !== 'unlock' && run.rewardModal !== 'milestone')
     || (run.rewardModal != null && !tile(run.modalTile))
     || (run.milestoneInfo != null && (!tile(run.milestoneInfo.current) || !tile(run.milestoneInfo.next) || !tile(run.milestoneInfo.retired)))) return null;
