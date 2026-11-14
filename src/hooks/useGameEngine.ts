@@ -65,6 +65,7 @@ export interface GameEngine {
   isPromotingNextTile: boolean;
   isResolvingMerge: boolean;
   shotTile: TileValue | null;
+  shotTargetColumn: number;
   shotTargetRow: number;
   shotDuration: number;
   mergeEvents: MergeEvent[];
@@ -163,6 +164,7 @@ export function useGameEngine(): GameEngine {
   const [isPromotingNextTile, setIsPromotingNextTile] = useState(false);
   const [isResolvingMerge, setIsResolvingMerge] = useState(false);
   const [shotTileValue, setShotTileValue] = useState<TileValue | null>(null);
+  const [shotTargetColumn, setShotTargetColumn] = useState(2);
   const [shotTargetRow, setShotTargetRow] = useState(0);
   const [shotDuration, setShotDuration] = useState(300);
   const [mergeEvents, setMergeEvents] = useState<MergeEvent[]>([]);
@@ -351,7 +353,7 @@ export function useGameEngine(): GameEngine {
     if (mergeTimer.current) window.clearTimeout(mergeTimer.current);
     const retired = getRetiredValuesForHighest(highest);
     const initialBoard = previousBoard ? createDistinctInitialBoard(previousBoard, retired) : createInitialBoard(retired);
-    const readyBoard = resolveMerges(initialBoard, { row: 0, col: 0 }, highest).board;
+    const readyBoard = resolveMerges(initialBoard, { row: 0, col: 0 }, highest, { scanWholeBoard: true }).board;
     setBoard(readyBoard);
     replaceRunStats({ shots: 0, highestTile: Math.max(INITIAL_HIGHEST, ...readyBoard.flat().filter((value): value is TileValue => value !== null)), longestCascade: 0 });
     setScore(0);
@@ -444,7 +446,7 @@ export function useGameEngine(): GameEngine {
     setChallengeBestScore(readChallengeRunRecord(id).bestScore);
     setScreen('game');
     setRunActive(true);
-    const openingBoard = resolveMerges(createInitialBoard(), { row: 0, col: 0 }, INITIAL_HIGHEST).board;
+    const openingBoard = resolveMerges(createInitialBoard(), { row: 0, col: 0 }, INITIAL_HIGHEST, { scanWholeBoard: true }).board;
     setBoard(openingBoard);
     setScore(0);
     setHighestBlock(INITIAL_HIGHEST);
@@ -584,9 +586,9 @@ export function useGameEngine(): GameEngine {
     const before: Snapshot = { board: cloneBoard(board), score, currentTile, nextTile, highestBlock, totalXp };
     let columnHeight = 0;
     while (columnHeight < ROWS && board[columnHeight][column] !== null) columnHeight += 1;
-    const matchingHit = columnHeight > 0 && board[columnHeight - 1][column] === tile;
-    const targetRow = matchingHit ? columnHeight - 1 : Math.min(columnHeight, ROWS - 1);
-    const flightDuration = 190 + (ROWS - 1 - targetRow) * 23;
+    // The shot occupies the next cell below a matching collision as well.
+    const targetRow = Math.min(columnHeight, ROWS - 1);
+    const flightDuration = 250 + (ROWS - 1 - targetRow) * 18;
     const result = shootTile(board, column, tile, highestBlock);
     const shotStats = tutorialStep === 0
       ? updateRunStats((stats) => ({
@@ -598,6 +600,7 @@ export function useGameEngine(): GameEngine {
     setSelectedColumn(column);
     setIsShooting(true);
     setShotTileValue(tile);
+    setShotTargetColumn(column);
     setShotTargetRow(targetRow);
     setShotDuration(flightDuration);
     setMergeEvents([]);
@@ -728,7 +731,7 @@ export function useGameEngine(): GameEngine {
         setIsShooting(false);
         setShotTileValue(null);
         setBoard(step.boardAfter);
-        setMergeEvents([{ ...step.result, value: step.value }]);
+        setMergeEvents([{ ...step.result, value: step.value, shape: step.shape, tileCount: step.tileCount }]);
         setMergeAnimation({ step, phase: 'popping' });
         mergeTimer.current = window.setTimeout(() => {
           setMergeAnimation(null);
@@ -782,10 +785,14 @@ export function useGameEngine(): GameEngine {
     }, flightDuration);
   }, [board, challengeId, currentTile, dailySeedDay, dailySeedRunLongestChain, finishTutorial, gameMode, hammerActive, highestBlock, isPromotingNextTile, isResolvingMerge, isShooting, modal, nextTile, queueOrShowAdBreak, retiredTiles, score, screen, selectedColumn, spawnTile, totalXp, tutorialStep, updateRunStats]);
 
-  const selectColumn = useCallback((column: number) => setSelectedColumn(Math.max(0, Math.min(COLS - 1, column))), []);
+  const selectColumn = useCallback((column: number) => {
+    if (isShooting || isPromotingNextTile || isResolvingMerge) return;
+    setSelectedColumn(Math.max(0, Math.min(COLS - 1, column)));
+  }, [isPromotingNextTile, isResolvingMerge, isShooting]);
   const moveSelection = useCallback((delta: number) => {
+    if (isShooting || isPromotingNextTile || isResolvingMerge) return;
     setSelectedColumn((column) => Math.max(0, Math.min(COLS - 1, column + delta)));
-  }, []);
+  }, [isPromotingNextTile, isResolvingMerge, isShooting]);
 
   const pause = useCallback(() => {
     if (!isShooting && !isPromotingNextTile && !isResolvingMerge && !modal) setModal('pause');
@@ -837,7 +844,7 @@ export function useGameEngine(): GameEngine {
       for (let r = 0; r < ROWS; r += 1) next[r][column] = values[r] ?? null;
     }
     historyRef.current = [...historyRef.current.slice(-9), { board: cloneBoard(board), score, currentTile, nextTile, highestBlock, totalXp }];
-    const resolved = resolveMerges(next, { row: 0, col: 0 }, highestBlock);
+    const resolved = resolveMerges(next, { row: 0, col: 0 }, highestBlock, { scanWholeBoard: true });
     // Booster merges count toward tile and merge objectives, not a shot chain.
     const challengeMerges = resolved.merges;
     if (challengeMerges.length) recordChallengeMove(`${runId.current}:${++moveNumber.current}`, challengeMerges, Date.now(), false);
@@ -980,7 +987,7 @@ export function useGameEngine(): GameEngine {
     totalXp, xpIntoLevel: levelState.xpIntoLevel, xpToNextLevel: levelState.xpToNextLevel, levelProgress: levelState.progressPercent,
     boosters, modal, modalTile, milestoneInfo, retiredTiles, tutorialStep, hammerActive, isShooting,
     isPromotingNextTile, isResolvingMerge, shotTile: shotTileValue,
-    shotTargetRow, shotDuration, mergeEvents, mergeAnimation, combo, currentGoal,
+    shotTargetColumn, shotTargetRow, shotDuration, mergeEvents, mergeAnimation, combo, currentGoal,
     startGame, startDailySeed, startChallengeRun, goHome, restart, shoot, selectColumn, moveSelection, pause,
     resume, useBooster, hitWithHammer, skipTutorial, closeGoal, claimUnlock, closeMilestone, resolveCreatedAgain,
     adBusy, adAvailable, adBreakScore, requestAdBreak, finishAdBreak, watchForBooster, buyBooster, setBoosterOfferOpen, purchaseShopItem, collectDailyGift, collectChallengeReward,

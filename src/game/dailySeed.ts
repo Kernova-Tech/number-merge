@@ -62,7 +62,7 @@ export function createDailySeedOpening(day: string) {
     randomState = next.state;
     return next.value;
   };
-  const board = resolveMerges(createInitialBoard([], random), { row: 0, col: 0 }, INITIAL_HIGHEST).board;
+  const board = resolveMerges(createInitialBoard([], random), { row: 0, col: 0 }, INITIAL_HIGHEST, { scanWholeBoard: true }).board;
   const currentTile = generateWeightedTile(INITIAL_HIGHEST, random);
   const nextTile = generateWeightedTile(INITIAL_HIGHEST, random, [currentTile]);
   return { seed, randomState, board, currentTile, nextTile, highestBlock: INITIAL_HIGHEST as TileValue };
